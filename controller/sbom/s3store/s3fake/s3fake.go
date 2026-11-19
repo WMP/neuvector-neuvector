@@ -62,7 +62,9 @@ func (s *Server) Requests() int {
 func writeErr(w http.ResponseWriter, code int, c string) {
 	w.Header().Set("Content-Type", "application/xml")
 	w.WriteHeader(code)
-	io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?><Error><Code>`+c+`</Code><Message>`+c+`</Message></Error>`)
+	if _, err := io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?><Error><Code>`+c+`</Code><Message>`+c+`</Message></Error>`); err != nil {
+		panic(err)
+	}
 }
 
 type listContent struct {
@@ -83,7 +85,10 @@ type listResult struct {
 }
 
 func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
-	body, _ := io.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		panic(err)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.requests++
@@ -115,7 +120,9 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", strconv.Itoa(len(b)))
 		w.Header().Set("Last-Modified", s.mod[key].Format(http.TimeFormat))
 		if r.Method == http.MethodGet {
-			w.Write(b)
+			if _, err := w.Write(b); err != nil {
+				panic(err)
+			}
 		}
 	case r.Method == http.MethodDelete:
 		delete(s.objs, key)
@@ -160,5 +167,7 @@ func (s *Server) list(w http.ResponseWriter, bucket string, q map[string][]strin
 	}
 	res.KeyCount = len(keys)
 	w.Header().Set("Content-Type", "application/xml")
-	xml.NewEncoder(w).Encode(res)
+	if err := xml.NewEncoder(w).Encode(res); err != nil {
+		panic(err)
+	}
 }
