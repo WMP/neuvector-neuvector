@@ -1,6 +1,7 @@
 package common
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 	"reflect"
 
 	"github.com/neuvector/neuvector/controller/api"
+	"github.com/neuvector/neuvector/share"
 	"github.com/stretchr/testify/require"
 )
 
@@ -420,4 +422,25 @@ func unmarshalJSON(t *testing.T, data []byte, v interface{}) {
 	if err := json.Unmarshal(data, v); err != nil {
 		t.Errorf("Unmarshal error: %v", err)
 	}
+}
+
+func TestEncryptDependencyTrackKey(t *testing.T) {
+	require.NoError(t, InitAesGcmKey(map[string][]byte{"1": []byte("abcdefghijklmnopqrstuvwxyz123456")}, "1"))
+	defer resetDekSeeds()
+
+	var enc EncryptMarshaller
+	var dec DecryptUnmarshaller
+
+	cfg := share.CLUSSystemConfig{DependencyTrack: share.CLUSDependencyTrack{URL: "https://dt", APIKey: "secret-key"}}
+	body, err := enc.Marshal(&cfg)
+	require.NoError(t, err)
+	require.NotContains(t, string(body), "secret-key")
+
+	var got share.CLUSSystemConfig
+	require.NoError(t, dec.Unmarshal(body, &got))
+	require.Equal(t, "secret-key", got.DependencyTrack.APIKey)
+
+	require.NotContains(t, fmt.Sprintf("%v", cfg), "secret-key")
+	require.NotContains(t, fmt.Sprintf("%+v", cfg), "secret-key")
+	require.NotContains(t, fmt.Sprintf("%v", &cfg), "secret-key")
 }

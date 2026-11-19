@@ -3087,6 +3087,48 @@ paths:
           description: Success
           schema:
             $ref: "#/definitions/RESTScanRepoReportData"
+  /v1/sbom/dependency_track:
+    get:
+      tags:
+        - Scan
+      summary: Get the Dependency-Track SBOM upload configuration
+      description: Requires the sbom permission in the global scope. The API key is never returned.
+      security:
+        - ApiKeyAuth: []
+        - TokenAuth: []
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/RESTDependencyTrackData"
+        "403":
+          description: The sbom permission is missing
+    patch:
+      tags:
+        - Scan
+      summary: Configure the Dependency-Track SBOM upload
+      description: Requires the sbom write permission in the global scope. Only the given fields change. The api_key field keeps the key when absent and clears it when empty.
+      security:
+        - ApiKeyAuth: []
+        - TokenAuth: []
+      consumes:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Dependency-Track configuration
+          required: true
+          schema:
+            $ref: "#/definitions/RESTDependencyTrackConfigData"
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Invalid request
+        "403":
+          description: The sbom write permission is missing
   /v1/scan/status:
     get:
       tags:
@@ -12056,6 +12098,78 @@ definitions:
         items:
           type: string
           example: ""
+  RESTDependencyTrack:
+    type: object
+    required:
+      - enabled
+      - url
+      - api_key_set
+      - project_name
+      - project_version
+      - tags
+      - inactive_grace_period
+    properties:
+      enabled:
+        type: boolean
+      url:
+        type: string
+      api_key_set:
+        type: boolean
+        description: True when an API key is stored. The key is never returned.
+      project_name:
+        type: string
+        description: Project name template
+      project_version:
+        type: string
+        description: Project version template
+      tags:
+        type: array
+        items:
+          type: string
+      inactive_grace_period:
+        type: integer
+        format: uint32
+        description: Minutes
+  RESTDependencyTrackData:
+    type: object
+    required:
+      - config
+    properties:
+      config:
+        $ref: "#/definitions/RESTDependencyTrack"
+  RESTDependencyTrackConfig:
+    type: object
+    properties:
+      enabled:
+        type: boolean
+      url:
+        type: string
+        description: Only http and https, without credentials, query or fragment
+      api_key:
+        type: string
+        description: Absent keeps the stored key, an empty string clears it
+      project_name:
+        type: string
+        description: "Template. Symbols are {cluster}, {namespace}, {replicaset}, {service}, {pod}, {container}, {image}, {digest}, {pod.metadata.labels.KEY} and {namespace.metadata.labels.KEY}. An empty value means the default."
+      project_version:
+        type: string
+        description: Template, same symbols as project_name. An empty value means the default.
+      tags:
+        type: array
+        description: Templates, at most 50. A tag must not contain a comma.
+        items:
+          type: string
+      inactive_grace_period:
+        type: integer
+        format: uint32
+        description: Minutes, at most 525600. 0 means the default.
+  RESTDependencyTrackConfigData:
+    type: object
+    required:
+      - config
+    properties:
+      config:
+        $ref: "#/definitions/RESTDependencyTrackConfig"
   RESTSystemSummaryData:
     type: object
     required:

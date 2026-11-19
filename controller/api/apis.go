@@ -4433,3 +4433,31 @@ func (h *RESTHost) GetScanData() RESTAssetScanData {
 		HostName: h.Name,
 	}
 }
+
+type RESTDependencyTrack struct {
+	Enabled        bool     `json:"enabled"`
+	URL            string   `json:"url"`
+	APIKeySet      bool     `json:"api_key_set"`
+	ProjectName    string   `json:"project_name"`
+	ProjectVersion string   `json:"project_version"`
+	Tags           []string `json:"tags"`
+	InactiveGrace  uint32   `json:"inactive_grace_period"` // minutes
+}
+
+type RESTDependencyTrackData struct {
+	Config *RESTDependencyTrack `json:"config"`
+}
+
+type RESTDependencyTrackConfig struct {
+	Enabled        *bool     `json:"enabled,omitempty"`
+	URL            *string   `json:"url,omitempty"`
+	APIKey         *string   `json:"api_key,omitempty,cloak"`
+	ProjectName    *string   `json:"project_name,omitempty"`
+	ProjectVersion *string   `json:"project_version,omitempty"`
+	Tags           *[]string `json:"tags,omitempty"`
+	InactiveGrace  *uint32   `json:"inactive_grace_period,omitempty"` // minutes; 0 = default
+}
+
+type RESTDependencyTrackConfigData struct {
+	Config *RESTDependencyTrackConfig `json:"config"`
+}
