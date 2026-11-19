@@ -218,6 +218,15 @@ func TestSBOMStorageDownload(t *testing.T) {
 	}
 	srv.SetFail(false)
 
+	// damaged object (cut gzip stream): the inventory document, never a cut 200 body
+	for key, b := range srv.Objects() {
+		srv.Put(key, b[:len(b)-6])
+	}
+	w = sbomS3Call("GET", regURL, "", api.UserRoleAdmin, nil)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "registrymod") {
+		t.Errorf("damaged object: status=%d body=%s", w.Code, w.Body.String())
+	}
+
 	// no access to the registry: 403 and no S3 request
 	before := srv.Requests()
 	other := map[string][]string{"sbom-reader": {"ns2"}}

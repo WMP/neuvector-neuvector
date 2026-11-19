@@ -9659,6 +9659,7 @@ definitions:
         type: string
       prefix:
         type: string
+        description: Objects are stored as <prefix>/<cluster name>/images/<digest>.cdx.json.gz. Use a unique prefix per cluster when clusters share a bucket.
       path_style:
         type: boolean
       access_key:
@@ -9667,6 +9668,7 @@ definitions:
         type: string
       delete_unused:
         type: boolean
+        description: Deletes objects whose image digest is in no workload and no registry of this cluster for longer than delete_grace_period. Use a bucket or prefix that no other cluster writes to; clusters with the same name and prefix would delete each other's objects.
       delete_grace_period:
         type: integer
         format: uint32

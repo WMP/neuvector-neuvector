@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -232,4 +233,19 @@ func TestConfigure(t *testing.T) {
 	cfg.SBOMStorage.Enabled = false
 	Configure(cfg)
 	require.Nil(t, Current())
+}
+
+func TestBypassMetadata(t *testing.T) {
+	proxy, _ := url.Parse("http://proxy:3128")
+	f := bypassMetadata(http.ProxyURL(proxy))
+	for host, direct := range map[string]bool{
+		"169.254.169.254": true, "169.254.170.2": true, "[fd00:ec2::254]": true,
+		"s3.amazonaws.com": false, "10.0.0.1": false, "sts.amazonaws.com": false,
+	} {
+		req, _ := http.NewRequest("GET", "http://"+host+"/x", nil)
+		got, err := f(req)
+		if err != nil || (got == nil) != direct {
+			t.Errorf("%s: proxy=%v err=%v, want direct=%v", host, got, err, direct)
+		}
+	}
 }

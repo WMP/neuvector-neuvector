@@ -20,6 +20,13 @@ func configS3(t *testing.T, srv *s3fake.Server, enabled bool) {
 	t.Cleanup(func() { s3store.Configure(&share.CLUSSystemConfig{ClusterName: "c1"}) })
 }
 
+// store runs the upload synchronously, as the scan task would in a goroutine.
+func store(r *share.ScanResult) {
+	if up := takeFullSBOM(r, r.Digest); up != nil {
+		up()
+	}
+}
+
 func sbomResult(digest, format string, data []byte) *share.ScanResult {
 	return &share.ScanResult{Digest: digest, FullSBOM: data, FullSBOMFormat: format}
 }
@@ -33,7 +40,7 @@ func TestStoreFullSBOM(t *testing.T) {
 	require.NotNil(t, s3store.Current())
 
 	r := sbomResult(testDigest, share.FullSBOMFormatCycloneDX, gz)
-	storeFullSBOM(r)
+	store(r)
 	require.Nil(t, r.FullSBOM)
 	require.Empty(t, r.FullSBOMFormat)
 	require.Equal(t, map[string][]byte{"c1/images/" + testDigest + ".cdx.json.gz": gz}, srv.Objects())
@@ -41,7 +48,7 @@ func TestStoreFullSBOM(t *testing.T) {
 	// S3 failure never fails the scan
 	srv.SetFail(true)
 	r = sbomResult(testDigest, share.FullSBOMFormatCycloneDX, gz)
-	storeFullSBOM(r)
+	store(r)
 	require.Nil(t, r.FullSBOM)
 }
 
@@ -56,7 +63,7 @@ func TestStoreFullSBOMRejected(t *testing.T) {
 		"not gzip":    sbomResult(testDigest, share.FullSBOMFormatCycloneDX, []byte("{}")),
 		"scan failed": {Digest: testDigest, Error: share.ScanErrorCode_ScanErrNetwork, FullSBOM: gz, FullSBOMFormat: share.FullSBOMFormatCycloneDX},
 	} {
-		storeFullSBOM(r)
+		store(r)
 		require.Nil(t, r.FullSBOM, name)
 		require.Empty(t, r.FullSBOMFormat, name)
 	}
@@ -71,7 +78,7 @@ func TestStoreFullSBOMDisabled(t *testing.T) {
 	require.Nil(t, s3store.Current()) // IncludeFullSBOM is false
 
 	r := sbomResult(testDigest, share.FullSBOMFormatCycloneDX, gz)
-	storeFullSBOM(r)
+	store(r)
 	require.Nil(t, r.FullSBOM)
 	require.Zero(t, srv.Requests())
 }

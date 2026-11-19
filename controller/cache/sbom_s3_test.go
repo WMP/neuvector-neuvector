@@ -31,14 +31,14 @@ func s3Env(t *testing.T, deleteUnused bool) *s3fake.Server {
 	srv.Put(keyOf(dPresent), []byte("x"))
 	srv.Put(keyOf(dMissing), []byte("x"))
 
-	oldInit, oldLeader, oldAt, oldWl := syncInitDone, cacher.isLeader, cacher.leaderElectedAt, wlCacheMap
+	oldInit, oldLeader, oldAt, oldWl, oldAddr := syncInitDone, cacher.isLeader, cacher.leaderElectedAt, wlCacheMap, cacher.leadAddr
 	syncInitDone, cacher.isLeader, cacher.leaderElectedAt = true, true, t0.Add(-100*time.Hour)
 	wlCacheMap = map[string]*workloadCache{
 		"w1": {workload: &share.CLUSWorkload{ImageRepoDigests: []string{"repo/img@" + dPresent}}},
 	}
 	s3SweepReset()
 	t.Cleanup(func() {
-		syncInitDone, cacher.isLeader, cacher.leaderElectedAt, wlCacheMap = oldInit, oldLeader, oldAt, oldWl
+		syncInitDone, cacher.isLeader, cacher.leaderElectedAt, wlCacheMap, cacher.leadAddr = oldInit, oldLeader, oldAt, oldWl, oldAddr
 		s3SweepReset()
 		s3store.Configure(&share.CLUSSystemConfig{ClusterName: "c1"})
 		srv.Close()

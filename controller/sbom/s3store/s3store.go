@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -285,6 +286,18 @@ func Configure(cfg *share.CLUSSystemConfig) {
 	log.WithFields(log.Fields{"endpoint": sc.Endpoint, "bucket": sc.Bucket, "prefix": sc.Prefix, "path_style": sc.PathStyle}).Info("sbom s3: storage enabled")
 }
 
+// bypassMetadata keeps the instance and container metadata endpoints off the registry proxy: with empty keys
+// the default AWS credential chain uses this client to get the role credentials.
+func bypassMetadata(proxy func(*http.Request) (*url.URL, error)) func(*http.Request) (*url.URL, error) {
+	return func(r *http.Request) (*url.URL, error) {
+		h := r.URL.Hostname()
+		if ip := net.ParseIP(h); ip != nil && (ip.IsLinkLocalUnicast() || ip.Equal(net.ParseIP("fd00:ec2::254"))) {
+			return nil, nil
+		}
+		return proxy(r)
+	}
+}
+
 func build(sc share.CLUSSBOMStorage, cluster string) (*Store, error) {
 	if err := Validate(sc); err != nil {
 		return nil, err
@@ -298,6 +311,11 @@ func build(sc share.CLUSSBOMStorage, cluster string) (*Store, error) {
 		return nil, err
 	}
 	hc := *base
+	if t, ok := base.Transport.(*http.Transport); ok && t.Proxy != nil {
+		t = t.Clone()
+		t.Proxy = bypassMetadata(t.Proxy)
+		hc.Transport = t
+	}
 	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	hc.Timeout = 5 * time.Minute
 	return New(sc, cluster, &hc)

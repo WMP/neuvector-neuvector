@@ -82,8 +82,8 @@ func s3Sweep(now time.Time) {
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
 	objs, err := st.List(ctx)
+	cancel()
 	if err != nil {
 		log.WithError(err).Warn("sbom s3: list failed, sweep skipped")
 		return
@@ -100,7 +100,10 @@ func s3Sweep(now time.Time) {
 		case !seen:
 			s3Sweeper.missingSince[d] = now
 		case now.Sub(since) > st.Grace && now.Sub(cacher.leaderElectedAt) > st.Grace && isLeader():
-			if err := st.Delete(ctx, d); err != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			err := st.Delete(ctx, d)
+			cancel()
+			if err != nil {
 				log.WithFields(log.Fields{"digest": d, "error": err}).Warn("sbom s3: delete failed")
 			} else {
 				log.WithFields(log.Fields{"digest": d}).Info("sbom s3: unused full SBOM deleted")
