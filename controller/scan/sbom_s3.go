@@ -10,6 +10,8 @@ import (
 	"github.com/neuvector/neuvector/share"
 )
 
+var sbomUploadSlots = make(chan struct{}, 4)
+
 // takeFullSBOM drops the full SBOM from a registry scan result, so it never reaches the cluster store,
 // and returns its upload, or nil. digest is the registry summary digest: REST and the cleanup look it up.
 // S3 errors never fail a scan.
@@ -24,11 +26,27 @@ func takeFullSBOM(result *share.ScanResult, digest string) func() {
 		log.Debug("sbom s3: storage disabled, full SBOM dropped")
 		return nil
 	}
-	if format != share.FullSBOMFormatCycloneDX || !s3store.ValidDigest(digest) || len(data) < 2 || data[0] != 0x1f || data[1] != 0x8b {
-		log.WithFields(log.Fields{"digest": digest, "format": format}).Warn("sbom s3: unexpected full SBOM format, digest or encoding, dropped")
+	fields := log.Fields{"digest": digest, "scanned_digest": result.Digest, "format": format, "size": len(data)}
+	if format != share.FullSBOMFormatCycloneDX || !s3store.ValidDigest(digest) || len(data) < 2 || data[0] != 0x1f || data[1] != 0x8b ||
+		len(data) > s3store.MaxObjectSize {
+		log.WithFields(fields).Warn("sbom s3: unexpected full SBOM format, digest, encoding or size, dropped")
+		return nil
+	}
+	if result.Digest != "" && result.Digest != digest { // the tag moved between the listing and the scan
+		log.WithFields(fields).Warn("sbom s3: scanned image digest differs from the registry digest, dropped")
 		return nil
 	}
 	return func() {
+		select {
+		case sbomUploadSlots <- struct{}{}:
+			defer func() { <-sbomUploadSlots }()
+		default: // a slow S3 must not pile up uploads in memory
+			log.WithFields(log.Fields{"digest": digest}).Warn("sbom s3: too many uploads in progress, full SBOM dropped")
+			return
+		}
+		if s3store.Current() != st { // storage disabled or changed after the scan
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 		if err := st.Put(ctx, digest, data); err != nil {

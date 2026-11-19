@@ -31,6 +31,7 @@ const (
 	DefaultRegion       = "us-east-1"
 	DefaultGraceMinutes = 1440
 	MaxGraceMinutes     = 525600
+	MaxObjectSize       = 64 << 20 // gzip; the default gRPC message limit
 
 	objSuffix = ".cdx.json.gz"
 )

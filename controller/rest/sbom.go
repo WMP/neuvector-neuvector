@@ -83,7 +83,7 @@ func sbomFromS3(w http.ResponseWriter, r *http.Request, digest string, meta sbom
 	if st == nil || !s3store.ValidDigest(digest) {
 		return false
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second) // a down S3 must not hold the fallback long
 	defer cancel()
 	rc, err := st.Open(ctx, digest)
 	if err != nil {
@@ -94,11 +94,11 @@ func sbomFromS3(w http.ResponseWriter, r *http.Request, digest string, meta sbom
 		}
 		return false
 	}
-	// The object came from one gRPC message (64 MB limit). The whole gzip stream is checked (CRC) before
+	// The upload is limited to MaxObjectSize. The whole gzip stream is checked (CRC) before
 	// the status is sent, so a damaged object falls back to the inventory instead of a cut 200 body.
-	zb, err := io.ReadAll(io.LimitReader(rc, sbomS3MaxObject+1))
+	zb, err := io.ReadAll(io.LimitReader(rc, s3store.MaxObjectSize+1))
 	rc.Close()
-	if err == nil && len(zb) > sbomS3MaxObject {
+	if err == nil && len(zb) > s3store.MaxObjectSize {
 		err = errors.New("object too large")
 	}
 	if err == nil {
@@ -118,8 +118,7 @@ func sbomFromS3(w http.ResponseWriter, r *http.Request, digest string, meta sbom
 	return true
 }
 
-const sbomS3MaxObject = 64 << 20 // gzip, as sent by the scanner
-const sbomS3MaxJSON = 1 << 30    // uncompressed
+const sbomS3MaxJSON = 256 << 20 // uncompressed; a full Syft document of 15 000 components is about 18 MB
 
 func gunzipTo(w io.Writer, zb []byte) error {
 	gz, err := gzip.NewReader(bytes.NewReader(zb))

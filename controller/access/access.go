@@ -1141,6 +1141,9 @@ func CompileUriPermitsMapping() {
 				"v1/vulnerability/profile/*",
 				"v1/vulnerability/profile/*/entry/*",
 			},
+			CONST_API_SBOM: {
+				"v1/sbom/s3",
+			},
 		}
 
 		apiURIsDELETE := map[int8][]string{
@@ -1202,9 +1205,6 @@ func CompileUriPermitsMapping() {
 			},
 			CONST_API_VULNERABILITY: {
 				"v1/vulnerability/profile/*/entry/*",
-			},
-			CONST_API_SBOM: {
-				"v1/sbom/s3",
 			},
 		}
 

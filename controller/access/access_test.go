@@ -2105,11 +2105,18 @@ func TestSBOMPermission(t *testing.T) {
 		"/v1/scan/registry/r/image/x/sbom": share.PERM_SBOM,
 		"/v1/scan/workload/x":              share.PERMS_RUNTIME_SCAN,
 		"/v1/scan/registry/r/image/x":      share.PERM_REG_SCAN,
+		"/v1/sbom/s3":                      share.PERM_SBOM,
+		"/v1/sbom/s3/images":               share.PERM_SBOM,
 	}
 	for uri, expected := range uris {
 		r, _ := http.NewRequest(http.MethodGet, uri, nil)
 		_, perm := getRequiredPermissions(r)
 		require.Equal(t, expected, perm, uri)
+	}
+	for method, expected := range map[string]uint32{http.MethodPatch: share.PERM_SBOM, http.MethodDelete: 0} {
+		r, _ := http.NewRequest(method, "/v1/sbom/s3", nil)
+		_, perm := getRequiredPermissions(r)
+		require.Equal(t, expected, perm, method)
 	}
 
 	// reserved roles: admin rw, reader r, ciops and none nothing; domain roles support it too

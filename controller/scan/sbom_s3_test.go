@@ -82,3 +82,26 @@ func TestStoreFullSBOMDisabled(t *testing.T) {
 	require.Nil(t, r.FullSBOM)
 	require.Zero(t, srv.Requests())
 }
+
+func TestStoreFullSBOMDropped(t *testing.T) {
+	srv := s3fake.New()
+	defer srv.Close()
+	configS3(t, srv, true)
+
+	// the tag moved between the listing and the scan
+	r := sbomResult("sha256:"+strings.Repeat("b", 64), share.FullSBOMFormatCycloneDX, gz)
+	require.Nil(t, takeFullSBOM(r, testDigest))
+	require.Nil(t, r.FullSBOM)
+
+	// too large
+	big := make([]byte, s3store.MaxObjectSize+1)
+	big[0], big[1] = 0x1f, 0x8b
+	require.Nil(t, takeFullSBOM(sbomResult(testDigest, share.FullSBOMFormatCycloneDX, big), testDigest))
+
+	// storage changed after the scan: the old store is not used
+	up := takeFullSBOM(sbomResult(testDigest, share.FullSBOMFormatCycloneDX, gz), testDigest)
+	require.NotNil(t, up)
+	configS3(t, srv, false)
+	up()
+	require.Zero(t, srv.Requests())
+}
