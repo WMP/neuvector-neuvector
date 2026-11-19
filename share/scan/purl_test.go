@@ -10,9 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/protoadapt"
 
 	"github.com/neuvector/neuvector/share"
 )
@@ -176,7 +177,7 @@ func TestPurlOldProtoCompat(t *testing.T) {
 	b, err := hex.DecodeString("0a04626173681205313a352e321a087268656c3a392e342a126370653a322e333a613a676e753a62617368320c7573722f62696e2f62617368")
 	require.NoError(t, err)
 	var m share.ScanModule
-	require.NoError(t, proto.Unmarshal(b, &m))
+	require.NoError(t, proto.Unmarshal(b, protoadapt.MessageV2Of(&m)))
 	checkOldModule(t, &m)
 	assert.Equal(t, "usr/bin/bash", m.File)
 }

@@ -157,9 +157,10 @@ func PurlMergeKey(purl string) string {
 	if !ok {
 		return ""
 	}
-	if c.typ == "golang" {
+	switch c.typ {
+	case "golang":
 		c.version = strings.TrimPrefix(c.version, "v")
-	} else if c.typ == "cran" { // NeuVector lowercases R package names
+	case "cran": // NeuVector lowercases R package names
 		c.name = strings.ToLower(c.name)
 	}
 	if c.namespace != "" {
