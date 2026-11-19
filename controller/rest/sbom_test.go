@@ -2,8 +2,10 @@ package rest
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/neuvector/neuvector/controller/access"
@@ -16,6 +18,7 @@ import (
 
 type sbomMockCache struct {
 	mockCache
+	wlImageID string // image ID of the mocked workloads
 }
 
 func (m *sbomMockCache) GetWorkload(id, view string, acc *access.AccessControl) (*api.RESTWorkload, error) {
@@ -25,13 +28,15 @@ func (m *sbomMockCache) GetWorkload(id, view string, acc *access.AccessControl) 
 		domain = "ns1"
 	case "wl2":
 		domain = "ns2"
+	case "wl-notscanned", "wl-dberr":
+		domain = "ns1"
 	default:
 		return nil, common.ErrObjectNotFound
 	}
 	if !acc.Authorize(&share.CLUSWorkload{Domain: domain}, nil) {
 		return nil, common.ErrObjectAccessDenied
 	}
-	return &api.RESTWorkload{RESTWorkloadBrief: api.RESTWorkloadBrief{ID: id, Name: id, Domain: domain}}, nil
+	return &api.RESTWorkload{RESTWorkloadBrief: api.RESTWorkloadBrief{ID: id, Name: id, Domain: domain, ImageID: m.wlImageID}}, nil
 }
 
 func (m *sbomMockCache) GetHost(id string, acc *access.AccessControl) (*api.RESTHost, error) {
@@ -50,7 +55,13 @@ func (m *sbomMockCache) GetAllWorkloadsBrief(view string, acc *access.AccessCont
 }
 
 func (m *sbomMockCache) GetScanModules(id string) ([]*share.ScanModule, string, error) {
-	return []*share.ScanModule{{Name: "m", Version: "1"}}, "debian:12", nil
+	switch id {
+	case "wl-notscanned":
+		return nil, "", common.ErrObjectNotFound
+	case "wl-dberr":
+		return nil, "", errors.New("secret db failure")
+	}
+	return []*share.ScanModule{{Name: "runtimemod", Version: "1"}}, "debian:12", nil
 }
 
 func (m *sbomMockCache) GetSystemConfigClusterName(acc *access.AccessControl) string {
@@ -69,8 +80,9 @@ func (m *sbomMockScan) GetRegistryImageModules(name, id string, acc *access.Acce
 	if id != "img1" {
 		return nil, nil, common.ErrObjectNotFound
 	}
-	return []*share.ScanModule{{Name: "m", Version: "1"}}, &share.CLUSRegistryImageSummary{
-		BaseOS: "debian:12", Digest: "sha256:abc", Images: []share.CLUSImage{{Repo: "lib/app", Tag: "1.0"}},
+	return []*share.ScanModule{{Name: "registrymod", Version: "1"}}, &share.CLUSRegistryImageSummary{
+		BaseOS: "debian:12", Digest: "sha256:abc",
+		Images: []share.CLUSImage{{Repo: "lib/zzz", Tag: "1.0"}, {Repo: "lib/app", Tag: "2.0"}, {Repo: "lib/app", Tag: "1.0"}},
 	}, nil
 }
 
@@ -212,5 +224,61 @@ func TestSBOMFormat(t *testing.T) {
 	// an unauthorized user gets 403 before the format is looked at
 	if w := sbomCall(sbomURLs[0]+"?format=xml", "sbom-no-perm", nil); w.Code != http.StatusForbidden {
 		t.Errorf("unauthorized user with bad format: status=%d, want 403", w.Code)
+	}
+}
+
+func TestSBOMErrors(t *testing.T) {
+	sbomSetup()
+	defer postTest()
+
+	// not scanned or failed scan
+	if c := sbomCall("/v1/scan/workload/wl-notscanned/sbom", api.UserRoleAdmin, nil).Code; c != http.StatusNotFound {
+		t.Errorf("not scanned: status=%d, want 404", c)
+	}
+	// generic error: 500 without the error text
+	w := sbomCall("/v1/scan/workload/wl-dberr/sbom", api.UserRoleAdmin, nil)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("db error: status=%d, want 500", w.Code)
+	}
+	if strings.Contains(w.Body.String(), "secret db failure") {
+		t.Errorf("db error text leaked to the client: %s", w.Body.String())
+	}
+}
+
+func TestSBOMImageSource(t *testing.T) {
+	sbomSetup()
+	defer postTest()
+
+	// the image scan is used when the user can access it
+	cacher = &sbomMockCache{wlImageID: "img1"}
+	w := sbomCall("/v1/scan/image/img1/sbom", api.UserRoleAdmin, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d, want 200", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "registrymod") || strings.Contains(body, "runtimemod") {
+		t.Errorf("image SBOM must be built from the image scan: %s", body)
+	}
+
+	// no accessible image scan: fall back to the runtime scan of the workload
+	cacher = &sbomMockCache{wlImageID: "noimg"}
+	w = sbomCall("/v1/scan/image/img1/sbom", api.UserRoleAdmin, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("fallback: status=%d, want 200", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "runtimemod") || strings.Contains(body, "registrymod") {
+		t.Errorf("fallback must use the runtime scan: %s", body)
+	}
+}
+
+func TestSBOMRegistryName(t *testing.T) {
+	sbomSetup()
+	defer postTest()
+
+	w := sbomCall("/v1/scan/registry/reg1/image/img1/sbom", api.UserRoleAdmin, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d, want 200", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "lib/app:1.0") || strings.Contains(body, "lib/zzz") {
+		t.Errorf("name must be the lowest repo:tag: %s", body)
 	}
 }

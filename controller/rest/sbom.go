@@ -2,6 +2,7 @@ package rest
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"time"
 
@@ -11,8 +12,8 @@ import (
 
 	"github.com/neuvector/neuvector/controller/access"
 	"github.com/neuvector/neuvector/controller/api"
+	"github.com/neuvector/neuvector/controller/common"
 	"github.com/neuvector/neuvector/controller/sbom"
-	"github.com/neuvector/neuvector/db"
 	"github.com/neuvector/neuvector/share"
 )
 
@@ -67,27 +68,41 @@ func sbomRespond(w http.ResponseWriter, format string, meta sbom.Meta, modules [
 	log.WithFields(log.Fields{"id": meta.ID, "format": format}).Debug("SBOM downloaded")
 }
 
-// imageScanModules returns the modules of the image scan; nil when there is none.
-func imageScanModules(imageID string) []*share.ScanModule {
-	if imageID == "" {
-		return nil
+// sbomRespErr writes the error response; err.Error() is never sent to the client.
+func sbomRespErr(w http.ResponseWriter, login *loginSession, err error) {
+	switch {
+	case errors.Is(err, common.ErrObjectAccessDenied):
+		restRespNotFoundLogAccessDenied(w, login, err)
+	case errors.Is(err, common.ErrObjectNotFound):
+		restRespError(w, http.StatusNotFound, api.RESTErrObjectNotFound)
+	default:
+		log.WithFields(log.Fields{"error": err}).Error("Failed to get SBOM data")
+		restRespError(w, http.StatusInternalServerError, api.RESTErrFailReadCluster)
 	}
-	if _, modules, err := db.GetVulnerabilityModule(imageID); err == nil {
-		return modules
-	}
-	return nil
 }
 
-// sbomWorkload serves the SBOM of the scanned workload id. source is the SBOM source type.
+// imageScanModules returns the modules and summary of the image scan the user can access; nil when there is none.
+func imageScanModules(acc *access.AccessControl, imageID string) ([]*share.ScanModule, *share.CLUSRegistryImageSummary) {
+	if imageID == "" {
+		return nil, nil
+	}
+	modules, sum, err := scanner.GetRegistryImageModules(common.RegistryAllName, imageID, acc)
+	if err != nil || sum == nil {
+		return nil, nil
+	}
+	return modules, sum
+}
+
+// sbomWorkload serves the SBOM of the scanned workload id. For SourceImage the image scan is used when accessible.
 func sbomWorkload(w http.ResponseWriter, acc *access.AccessControl, login *loginSession, format, id, source, name string) {
 	wl, err := cacher.GetWorkload(id, "", acc)
-	if wl == nil {
-		restRespNotFoundLogAccessDenied(w, login, err)
+	if err != nil || wl == nil {
+		sbomRespErr(w, login, err)
 		return
 	}
 	modules, baseOS, err := cacher.GetScanModules(id)
 	if err != nil {
-		restRespNotFoundLogAccessDenied(w, login, err)
+		sbomRespErr(w, login, err)
 		return
 	}
 	if name == "" {
@@ -100,10 +115,20 @@ func sbomWorkload(w http.ResponseWriter, acc *access.AccessControl, login *login
 		}
 	}
 	meta := sbom.Meta{Source: source, Name: name, ID: id, Digest: wl.ImageDigest}
-	if source == sbom.SourceContainer { // an image can run in several namespaces
-		meta.Domain = wl.Domain
+	imgModules, sum := imageScanModules(acc, wl.ImageID)
+	if source == sbom.SourceImage {
+		if sum != nil { // the image scan is the image content
+			if sum.Digest != "" {
+				meta.Digest = sum.Digest
+			}
+			sbomRespond(w, format, meta, imgModules, sum.BaseOS, nil)
+			return
+		}
+		sbomRespond(w, format, meta, modules, baseOS, nil)
+		return
 	}
-	sbomRespond(w, format, meta, modules, baseOS, imageScanModules(wl.ImageID))
+	meta.Domain = wl.Domain // an image can run in several namespaces, so only a container has a domain
+	sbomRespond(w, format, meta, modules, baseOS, imgModules)
 }
 
 func handlerScanWorkloadSBOM(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -152,13 +177,13 @@ func handlerScanHostSBOM(w http.ResponseWriter, r *http.Request, ps httprouter.P
 
 	id := ps.ByName("id")
 	host, err := cacher.GetHost(id, acc)
-	if host == nil {
-		restRespNotFoundLogAccessDenied(w, login, err)
+	if err != nil || host == nil {
+		sbomRespErr(w, login, err)
 		return
 	}
 	modules, baseOS, err := cacher.GetScanModules(id)
 	if err != nil {
-		restRespNotFoundLogAccessDenied(w, login, err)
+		sbomRespErr(w, login, err)
 		return
 	}
 	sbomRespond(w, format, sbom.Meta{Source: sbom.SourceHost, Name: host.Name, ID: id}, modules, baseOS, nil)
@@ -176,14 +201,20 @@ func handlerRegistryImageSBOM(w http.ResponseWriter, r *http.Request, ps httprou
 	id := ps.ByName("id")
 	modules, sum, err := scanner.GetRegistryImageModules(ps.ByName("name"), id, acc)
 	if err != nil || sum == nil {
-		restRespNotFoundLogAccessDenied(w, login, err)
+		sbomRespErr(w, login, err)
 		return
 	}
 	name := id
-	if len(sum.Images) > 0 && sum.Images[0].Repo != "" {
-		name = sum.Images[0].Repo
-		if sum.Images[0].Tag != "" {
-			name += ":" + sum.Images[0].Tag
+	for _, img := range sum.Images { // lowest repo:tag: the same request always gives the same name
+		if img.Repo == "" {
+			continue
+		}
+		n := img.Repo
+		if img.Tag != "" {
+			n += ":" + img.Tag
+		}
+		if name == id || n < name {
+			name = n
 		}
 	}
 	meta := sbom.Meta{Source: sbom.SourceImage, Name: name, ID: id, Digest: sum.Digest}

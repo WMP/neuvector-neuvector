@@ -2692,7 +2692,7 @@ paths:
       tags:
         - Scan
       summary: Get SBOM by workload's image ID
-      description: Download the software bill of materials (SBOM). Requires the sbom permission.
+      description: Download the software bill of materials (SBOM). Requires the sbom permission. The SBOM is built from the image scan when the user can access one, otherwise from the runtime scan of a workload that runs the image.
       security:
         - ApiKeyAuth: []
         - TokenAuth: []

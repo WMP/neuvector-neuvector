@@ -670,9 +670,12 @@ func (m *scanMethod) GetRegistryImageModules(name, id string, acc *access.Access
 	names := []string{name}
 	if name == common.RegistryAllName {
 		names = []string{common.RegistryRepoScanName, common.RegistryFedRepoScanName}
+		var regNames []string
 		for _, rs := range regMapToArray(true, true) {
-			names = append(names, rs.config.Name)
+			regNames = append(regNames, rs.config.Name)
 		}
+		sort.Strings(regNames) // the same request always gives the same image
+		names = append(names, regNames...)
 	}
 
 	for _, n := range names {
@@ -687,7 +690,7 @@ func (m *scanMethod) GetRegistryImageModules(name, id string, acc *access.Access
 				if err != nil {
 					return nil, nil, err
 				}
-				if sum.ScannedAt.IsZero() { // not scanned yet: no SBOM rather than an empty one
+				if sum.ScannedAt.IsZero() || sum.Result != share.ScanErrorCode_ScanErrNone { // not scanned or scan failed: no SBOM rather than an empty one
 					return nil, nil, common.ErrObjectNotFound
 				}
 				_, modules, err := db.GetVulnerabilityModule(id)
