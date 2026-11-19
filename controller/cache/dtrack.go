@@ -67,6 +67,8 @@ func dtrackPodUpdate(n, o *resource.Pod) {
 }
 
 // dtrackConfigUpdate (re)starts the uploader when the Dependency-Track settings change.
+// shortcut: the uploaded keys live in the leader's memory, so projects uploaded before a restart, failover
+// or config change are never set inactive (safe, never wrong); keep the keys in KV if that is needed.
 func dtrackConfigUpdate(cfg *share.CLUSSystemConfig) {
 	key := &dtrackConfigKey{cfg.DependencyTrack, cfg.EnableTLSVerification, cfg.GlobalCaCerts, cfg.RegistryHttpProxy, cfg.RegistryHttpsProxy}
 
@@ -83,6 +85,9 @@ func dtrackConfigUpdate(cfg *share.CLUSSystemConfig) {
 	dt := cfg.DependencyTrack
 	if !dt.Enabled {
 		return
+	}
+	if localDev != nil && localDev.Host.Platform != share.PlatformKubernetes {
+		log.Warn("dtrack: the project templates need Kubernetes pods; nothing is uploaded on this platform")
 	}
 
 	proxy := httpclient.GetHttpProxy()
@@ -113,12 +118,12 @@ func dtrackState() (*dtrack.Uploader, share.CLUSDependencyTrack, time.Time, cont
 // with an owner would look like a pod without owner and get a project of its own.
 var errDtrackPodUnknown = errors.New("pod not known yet")
 
-// dtrackItem builds the upload item of a workload. It returns nil, nil when the workload is gone.
+// dtrackItem builds the upload item of a workload. It returns nil, nil when the workload is gone or stopped.
 // The SBOM is built when the item is sent, so this does not read the database.
 func dtrackItem(id string, cfg share.CLUSDependencyTrack) (*dtrack.Item, error) {
 	cacheMutexRLock()
 	c := wlCacheMap[id]
-	if c == nil || c.workload == nil {
+	if c == nil || c.workload == nil || !c.workload.Running {
 		cacheMutexRUnlock()
 		return nil, nil
 	}
@@ -207,6 +212,13 @@ func dtrackReason(err error) string {
 	return "cannot render project"
 }
 
+// dtrackLeaderLost drops the queue and the retries, so that only the new leader uploads.
+func dtrackLeaderLost() {
+	if u, _, _, _ := dtrackState(); u != nil {
+		u.Reset()
+	}
+}
+
 func dtrackSweepLoop() {
 	t := time.NewTicker(dtrackSweepInterval)
 	defer t.Stop()
@@ -237,13 +249,6 @@ func dtrackSweep(now time.Time) {
 
 	var items []dtrack.Item
 	for _, id := range ids {
-		cacheMutexRLock()
-		c := wlCacheMap[id]
-		running := c != nil && c.workload != nil && c.workload.Running
-		cacheMutexRUnlock()
-		if !running {
-			continue
-		}
 		it, err := dtrackItem(id, cfg)
 		if err != nil {
 			log.WithFields(log.Fields{"workload": id, "error": err}).Debug("dtrack: workload skipped")

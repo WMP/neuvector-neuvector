@@ -288,6 +288,7 @@ func LeadChangeNotify(isLeader bool, leadAddr string) {
 	}
 
 	if !isLeader {
+		dtrackLeaderLost()
 		return
 	}
 

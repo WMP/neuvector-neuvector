@@ -53,11 +53,18 @@ func (c *Client) do(req *http.Request) (int, []byte, error) {
 	return resp.StatusCode, body, err
 }
 
+// errRejected marks a client error (4xx except 408 and 429): a retry gives the same answer.
+var errRejected = errors.New("rejected by Dependency-Track")
+
 func statusErr(what string, code int, body []byte) error {
 	if len(body) > 200 {
 		body = body[:200]
 	}
-	return fmt.Errorf("%s: HTTP %d: %s", what, code, bytes.TrimSpace(body))
+	err := fmt.Errorf("%s: HTTP %d: %s", what, code, bytes.TrimSpace(body))
+	if code >= 400 && code < 500 && code != http.StatusRequestTimeout && code != http.StatusTooManyRequests {
+		err = fmt.Errorf("%w: %w", errRejected, err)
+	}
+	return err
 }
 
 // Upload sends bom as the project p. autoCreate makes DT create the project when needed.

@@ -180,7 +180,7 @@ func Render(cfg share.CLUSDependencyTrack, v Vars) (Project, error) {
 
 	seen := map[string]bool{}
 	for _, t := range cfg.Tags {
-		s, empty, err := expand(t, v)
+		s, empty, err := expand(t, nv)
 		if err != nil || empty != "" || s == "" || strings.Contains(s, ",") || seen[s] {
 			continue
 		}

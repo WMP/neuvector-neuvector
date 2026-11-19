@@ -3,6 +3,7 @@ package dtrack
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -134,7 +135,7 @@ func TestInactiveAndActive(t *testing.T) {
 		t.Fatalf("PATCH before allowed: %v", f.patches)
 	}
 	u.Sweep(ctx, nil, grace, true)
-	if f.patches[0] != `{"active":false}` || f.lookups != 1 {
+	if f.patches[0] != `{"active":false}` || f.lookups != 2 { // first upload checks the active flag too
 		t.Fatalf("patches %v lookups %d", f.patches, f.lookups)
 	}
 	u.Sweep(ctx, nil, grace, true) // already inactive: no second call
@@ -191,5 +192,30 @@ func TestBOMErrorDropsItem(t *testing.T) {
 	waitFor(t, "drop", u.idle)
 	if n, _ := f.counts(); n != 0 {
 		t.Errorf("uploads = %d", n)
+	}
+}
+
+func TestUnknownProjectActivatedAndNoRetryOn401(t *testing.T) {
+	captureLogs(t)
+	f := newFakeDT(t)
+	f.active = false // inactive in DT, unknown to this (restarted) uploader
+	u := newTestUploader(t, f)
+	u.Enqueue(item("p1", "d1"))
+	waitFor(t, "upload", func() bool { n, p := f.counts(); return n == 1 && p == 1 && u.idle() })
+	if f.patches[0] != `{"active":true}` {
+		t.Errorf("patches %v", f.patches)
+	}
+
+	f.mu.Lock()
+	f.bomStatuses = []int{http.StatusUnauthorized, http.StatusUnauthorized}
+	f.mu.Unlock()
+	u.Enqueue(item("p2", "d1"))
+	waitFor(t, "rejected", func() bool { return u.idle() })
+	time.Sleep(50 * time.Millisecond)
+	f.mu.Lock()
+	calls := f.bomCalls
+	f.mu.Unlock()
+	if calls != 2 {
+		t.Errorf("401 must not be retried: %d upload calls", calls)
 	}
 }

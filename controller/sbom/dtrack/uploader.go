@@ -84,6 +84,8 @@ func (u *Uploader) Enqueue(it Item) bool {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	// An inactive project is sent again, so that it becomes active.
+	// shortcut: dedup by image digest only, so packages that change at runtime are sent again only
+	// with a new digest or after a restart; upgrade to a hash of the module list if that matters.
 	if e := u.uploaded[key]; e != nil && e.digest == it.Digest && !e.inactive {
 		return false
 	}
@@ -129,6 +131,22 @@ func (u *Uploader) process(ctx context.Context, q queued) {
 		bom = buf.Bytes()
 	}
 
+	// A project this uploader does not know (first upload, after a restart or Reset) or
+	// one it deactivated may be inactive in DT: activate it first. DT accepts the upload
+	// to an inactive project, but it would stay hidden. A missing project is not an error.
+	u.mu.Lock()
+	old := u.uploaded[key]
+	u.mu.Unlock()
+	stillInactive := false
+	if old == nil || old.inactive {
+		sctx, cancel := context.WithTimeout(ctx, uploadTimeout)
+		if serr := u.c.SetActive(sctx, q.item.Project.Name, q.item.Project.Version, true); serr != nil {
+			log.WithFields(fields).WithError(serr).Warn("dtrack: cannot activate project")
+			stillInactive = old != nil // the next Enqueue sends it again; an unknown project is not retried
+		}
+		cancel()
+	}
+
 	uctx, cancel := context.WithTimeout(ctx, uploadTimeout)
 	err = u.c.Upload(uctx, q.item.Project, bom)
 	cancel()
@@ -138,6 +156,13 @@ func (u *Uploader) process(ctx context.Context, q queued) {
 		log.WithFields(fields).WithField("size", len(bom)).Info("dtrack: SBOM uploaded")
 	case errors.Is(err, ErrTooLarge):
 		log.WithFields(fields).Error(err.Error())
+	case ctx.Err() != nil: // uploader stopped
+		u.done(q, key)
+		return
+	case errors.Is(err, errRejected):
+		log.WithFields(fields).WithError(err).Warn("dtrack: upload rejected, no retry until next sweep")
+		u.done(q, key)
+		return
 	default:
 		fields["attempt"] = q.attempt
 		if q.attempt >= u.maxAttempts {
@@ -156,30 +181,11 @@ func (u *Uploader) process(ctx context.Context, q queued) {
 	}
 
 	// Success or too large: remember the digest. Too large is not retried with the same digest.
-	e := &entry{digest: q.item.Digest, project: q.item.Project}
-	wasInactive := false
 	u.mu.Lock()
 	if q.gen == u.gen {
-		if old := u.uploaded[key]; old != nil {
-			e.inactive, wasInactive = old.inactive, old.inactive
-		}
-		e.lastSeen = u.now()
-		u.uploaded[key] = e
+		u.uploaded[key] = &entry{digest: q.item.Digest, project: q.item.Project, lastSeen: u.now(), inactive: stillInactive}
 	}
 	u.mu.Unlock()
-	if err == nil && wasInactive {
-		sctx, cancel := context.WithTimeout(ctx, uploadTimeout)
-		serr := u.c.SetActive(sctx, e.project.Name, e.project.Version, true)
-		cancel()
-		if serr != nil {
-			// Stays inactive here, so the next Enqueue sends the item again.
-			log.WithFields(fields).WithError(serr).Warn("dtrack: cannot activate project")
-		} else {
-			u.mu.Lock()
-			e.inactive = false
-			u.mu.Unlock()
-		}
-	}
 	u.done(q, key)
 }
 
