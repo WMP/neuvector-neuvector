@@ -2107,17 +2107,24 @@ func TestSBOMPermission(t *testing.T) {
 		"/v1/scan/registry/r/image/x":      share.PERM_REG_SCAN,
 		"/v1/sbom/s3":                      share.PERM_SBOM,
 		"/v1/sbom/s3/images":               share.PERM_SBOM,
+		"/v1/sbom/dependency_track":        share.PERM_SBOM,
+		"/v1/scan/component":               share.PERM_SBOM,
 	}
 	for uri, expected := range uris {
 		r, _ := http.NewRequest(http.MethodGet, uri, nil)
 		_, perm := getRequiredPermissions(r)
 		require.Equal(t, expected, perm, uri)
 	}
-	for method, expected := range map[string]uint32{http.MethodPatch: share.PERM_SBOM, http.MethodDelete: 0} {
-		r, _ := http.NewRequest(method, "/v1/sbom/s3", nil)
-		_, perm := getRequiredPermissions(r)
-		require.Equal(t, expected, perm, method)
+	for _, uri := range []string{"/v1/sbom/s3", "/v1/sbom/dependency_track"} {
+		for method, expected := range map[string]uint32{http.MethodPatch: share.PERM_SBOM, http.MethodDelete: 0} {
+			r, _ := http.NewRequest(method, uri, nil)
+			_, perm := getRequiredPermissions(r)
+			require.Equal(t, expected, perm, method+" "+uri)
+		}
 	}
+	r, _ := http.NewRequest(http.MethodPost, "/v1/sbom/dependency_track/preview", nil)
+	_, perm := getRequiredPermissions(r)
+	require.Equal(t, uint32(share.PERM_SBOM), perm, "POST preview")
 
 	// reserved roles: admin rw, reader r, ciops and none nothing; domain roles support it too
 	for _, c := range []struct {
