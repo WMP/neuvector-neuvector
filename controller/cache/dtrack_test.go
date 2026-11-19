@@ -319,3 +319,22 @@ func TestDtrackUnknownPodAndImageID(t *testing.T) {
 		t.Errorf("version %q", f.uploads[0].version)
 	}
 }
+
+func TestDtrackFailedRescanKeepsProject(t *testing.T) {
+	dtrackEnv(t)
+	f := newFakeDTrack(t)
+	dtrackStart(f, nil)
+	dtrackAddPod("w1", "ns", "web-1", "web-rs", nil)
+	dtrackSweep(time.Now())
+	f.waitUploads(t, 1)
+	time.Sleep(50 * time.Millisecond)
+	scanMap["w1"].lastResult = share.ScanErrorCode_ScanErrTimeout
+	dtrackMutex.Lock()
+	dtrackStartedAt = time.Now().Add(-time.Hour)
+	dtrackMutex.Unlock()
+	time.Sleep(150 * time.Millisecond) // past the test grace period
+	dtrackSweep(time.Now())
+	if u, p := f.counts(); u != 1 || p != 0 {
+		t.Errorf("running container with a failed rescan: uploads %d patches %d", u, p)
+	}
+}

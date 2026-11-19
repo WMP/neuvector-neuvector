@@ -238,23 +238,27 @@ func dtrackSweep(now time.Time) {
 		return
 	}
 
-	var ids []string
+	// every running container keeps its project alive; only a successful scan gives an SBOM to send
+	scanned := make(map[string]bool)
 	scanMutexRLock()
 	for id, info := range scanMap {
-		if info.objType == share.ScanObjectType_CONTAINER && info.lastResult == share.ScanErrorCode_ScanErrNone && !info.lastScanTime.IsZero() {
-			ids = append(ids, id)
+		if info.objType == share.ScanObjectType_CONTAINER {
+			scanned[id] = info.lastResult == share.ScanErrorCode_ScanErrNone && !info.lastScanTime.IsZero()
 		}
 	}
 	scanMutexRUnlock()
 
 	var items []dtrack.Item
-	for _, id := range ids {
+	for id, ok := range scanned {
 		it, err := dtrackItem(id, cfg)
 		if err != nil {
 			log.WithFields(log.Fields{"workload": id, "error": err}).Debug("dtrack: workload skipped")
 			continue
 		}
 		if it != nil {
+			if !ok {
+				it.BOM = nil // failed scan: mark the project as seen only
+			}
 			items = append(items, *it)
 		}
 	}

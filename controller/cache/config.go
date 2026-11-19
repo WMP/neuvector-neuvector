@@ -650,6 +650,7 @@ func systemConfigUpdate(nType cluster.ClusterNotifyType, key string, value []byt
 	case cluster.ClusterNotifyDelete:
 		// Triggered at configuration import
 		cfg = common.DefaultSystemConfig
+		dtrackConfigUpdate(&cfg)
 	}
 
 	// Only apply debug flags if they change so we can apply the initial debugCPath flag correctly.

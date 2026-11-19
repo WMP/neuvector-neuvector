@@ -21,7 +21,7 @@ type Item struct {
 	ID      string // workload ID, only for logs
 	Project Project
 	Digest  string                 // same Project.Key() and Digest as the last successful upload = skip
-	BOM     func() ([]byte, error) // builds the CycloneDX JSON when the item is sent
+	BOM     func() ([]byte, error) // builds the CycloneDX JSON when the item is sent; nil = only mark the project as seen
 }
 
 type entry struct {
@@ -80,6 +80,9 @@ func (u *Uploader) Run(ctx context.Context) {
 
 // Enqueue never blocks. It returns false when the item is not queued.
 func (u *Uploader) Enqueue(it Item) bool {
+	if it.BOM == nil {
+		return false
+	}
 	key := it.Project.Key()
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -160,9 +163,8 @@ func (u *Uploader) process(ctx context.Context, q queued) {
 		u.done(q, key)
 		return
 	case errors.Is(err, errRejected):
-		log.WithFields(fields).WithError(err).Warn("dtrack: upload rejected, no retry until next sweep")
-		u.done(q, key)
-		return
+		// recorded like 413: sent again only with a new digest or a new configuration (e.g. a new API key)
+		log.WithFields(fields).WithError(err).Warn("dtrack: upload rejected, not sent again for this image")
 	default:
 		fields["attempt"] = q.attempt
 		if q.attempt >= u.maxAttempts {
@@ -180,7 +182,7 @@ func (u *Uploader) process(ctx context.Context, q queued) {
 		return
 	}
 
-	// Success or too large: remember the digest. Too large is not retried with the same digest.
+	// Success, too large or rejected: remember the digest. The same digest is not sent again.
 	u.mu.Lock()
 	if q.gen == u.gen {
 		u.uploaded[key] = &entry{digest: q.item.Digest, project: q.item.Project, lastSeen: u.now(), inactive: stillInactive}
@@ -245,7 +247,10 @@ func (u *Uploader) Sweep(ctx context.Context, items []Item, grace time.Duration,
 	}
 	u.mu.Unlock()
 	for _, g := range list {
-		if ctx.Err() != nil { // uploader stopped (DT disabled or reconfigured)
+		u.mu.Lock()
+		stale := gen != u.gen // Reset: leadership lost or uploader stopped
+		u.mu.Unlock()
+		if stale || ctx.Err() != nil {
 			return
 		}
 		sctx, cancel := context.WithTimeout(ctx, uploadTimeout)
@@ -256,11 +261,11 @@ func (u *Uploader) Sweep(ctx context.Context, items []Item, grace time.Duration,
 			log.WithFields(fields).WithError(err).Warn("dtrack: cannot deactivate project")
 			continue
 		}
+		// Forget the project: if it comes back (also if the worker stored it meanwhile), the next upload
+		// checks the active flag in DT again. This also keeps the map small.
 		u.mu.Lock()
-		// the worker may have stored a new entry meanwhile: mark the current one, so that
-		// a project that came back is uploaded and activated again by the next Enqueue
-		if e := u.uploaded[g.key]; gen == u.gen && e != nil {
-			e.inactive = true
+		if gen == u.gen {
+			delete(u.uploaded, g.key)
 		}
 		u.mu.Unlock()
 		log.WithFields(fields).Info("dtrack: project deactivated")
