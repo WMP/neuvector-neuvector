@@ -113,7 +113,7 @@ type purlParts struct {
 	qualifiers                             map[string]string
 }
 
-// unescapePurl decodes %XX; invalid escapes stay as is (like Python unquote).
+// unescapePurl decodes %XX. With an invalid escape the string is returned undecoded.
 func unescapePurl(s string) string {
 	if u, err := url.PathUnescape(s); err == nil {
 		return u
@@ -135,6 +135,9 @@ func parsePurl(p string) (*purlParts, bool) {
 	last, ver, _ := strings.Cut(parts[len(parts)-1], "@")
 	r := &purlParts{typ: strings.ToLower(parts[0]), version: unescapePurl(ver), subpath: strings.Trim(unescapePurl(sub), "/")}
 	r.namespace, r.name = foldPurl(r.typ, unescapePurl(strings.Join(parts[1:len(parts)-1], "/")), unescapePurl(last))
+	if r.name == "" {
+		return nil, false
+	}
 	for _, kv := range strings.Split(qs, "&") {
 		if k, v, _ := strings.Cut(kv, "="); kv != "" {
 			if r.qualifiers == nil {
@@ -232,11 +235,8 @@ func ModulePurl(m *share.ScanModule, namespace string) string {
 		}
 		return ""
 	case "r":
-		n := pre("r:")
-		if _, rest, ok := strings.Cut(n, "-"); ok {
-			n = rest
-		}
-		return BuildPurl("cran", "", n, ver, nil, "")
+		n := pre("r:") // "<repository>-<name>"; R package names have no "-"
+		return BuildPurl("cran", "", n[strings.LastIndex(n, "-")+1:], ver, nil, "")
 	case "Wordpress":
 		return gen("wordpress")
 	case "nginx", "openssl": // app copies of OS packages, added only for CVE matching

@@ -2392,7 +2392,7 @@ func encodeScanReport(report *share.CLUSScanReport, limit int) ([]byte, error) {
 		return zb, err
 	}
 
-	// Drop data that CVE matching and admission do not use, in this order. Copy before change.
+	// Drop SBOM-only data in this order (CVE matching and admission do not use Syft modules). Copy before change.
 	cp := *report
 	cp.Modules = slices.DeleteFunc(slices.Clone(report.Modules), func(m *share.ScanModule) bool { return m.Origin == "syft" })
 	steps := []struct {
