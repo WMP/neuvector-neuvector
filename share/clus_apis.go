@@ -844,6 +844,7 @@ type CLUSSystemConfig struct {
 	GlobalCaCerts              []string                  `json:"cacerts"`
 	AllowNsUserExportNetPolicy bool                      `json:"allow_ns_user_export_net_policy,omitempty"`
 	SBOMStorage                CLUSSBOMStorage           `json:"sbom_s3"`
+	DependencyTrack            CLUSDependencyTrack       `json:"dependency_track"`
 }
 
 // FullSBOMFormatCycloneDX is the value of ScanResult.FullSBOMFormat.
@@ -869,6 +870,28 @@ func (c CLUSSBOMStorage) Format(f fmt.State, verb rune) {
 		c.SecretKey = "*****"
 	}
 	type plain CLUSSBOMStorage
+	fmt.Fprintf(f, "%+v", plain(c))
+}
+
+// CLUSDependencyTrack is the configuration of the SBOM upload to Dependency-Track.
+// Empty templates and a zero grace period mean the defaults.
+type CLUSDependencyTrack struct {
+	Enabled        bool     `json:"enabled"`
+	URL            string   `json:"url"`
+	APIKey         string   `json:"api_key,cloak"`
+	ProjectName    string   `json:"project_name"`
+	ProjectVersion string   `json:"project_version"`
+	Tags           []string `json:"tags"`
+	InactiveGrace  uint32   `json:"inactive_grace_period"` // minutes
+}
+
+// Format keeps the API key out of logs that print the configuration with %v.
+// It is not a fmt.Stringer on purpose: the cloak marshaller skips Stringer values.
+func (c CLUSDependencyTrack) Format(f fmt.State, verb rune) {
+	if c.APIKey != "" {
+		c.APIKey = "*****"
+	}
+	type plain CLUSDependencyTrack
 	fmt.Fprintf(f, "%+v", plain(c))
 }
 

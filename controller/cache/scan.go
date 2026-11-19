@@ -585,6 +585,11 @@ func scanDone(id string, objType share.ScanObjectType, report *share.CLUSScanRep
 		auditUpdate(id, share.EventCVEReport, objType, clog, alives, fixedCriticalsInfo, fixedHighsInfo)
 		syncUnlock(syncCatgAuditIdx)
 	}
+
+	// after PopulateAssetVul: the SBOM is built from the modules in the database
+	if ok && objType == share.ScanObjectType_CONTAINER && report.Error == share.ScanErrorCode_ScanErrNone {
+		dtrackScanDone(id)
+	}
 }
 
 func (m CacheMethod) GetScannerCount(acc *access.AccessControl) (int, string, string) {

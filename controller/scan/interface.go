@@ -568,9 +568,9 @@ func (m *scanMethod) getAllRegistryImageReport(id string, vpf scanUtils.VPFInter
 
 // resolveRegistry finds the registry by name; it does not handle common.RegistryAllName.
 func resolveRegistry(name string, acc *access.AccessControl) (*Registry, error) {
-	if name == common.RegistryRepoScanName {
+	if name == common.RegistryRepoScanName && repoScanRegistry != nil {
 		return repoScanRegistry, nil
-	} else if name == common.RegistryFedRepoScanName {
+	} else if name == common.RegistryFedRepoScanName && repoFedScanRegistry != nil {
 		return repoFedScanRegistry, nil
 	} else if rs, ok := regMapLookup(name); ok {
 		return rs, nil
@@ -664,6 +664,15 @@ func (m *scanMethod) GetRegistryImageReport(name, id string, vpf scanUtils.VPFIn
 	}
 
 	return &rrpt, nil
+}
+
+// RegistryImageModules returns the modules and summary of the scanned image imageID from any registry, without access filtering.
+// It returns nil when the scan module is not initialized.
+func RegistryImageModules(imageID string) ([]*share.ScanModule, *share.CLUSRegistryImageSummary, error) {
+	if smd == nil {
+		return nil, nil, nil
+	}
+	return smd.GetRegistryImageModules(common.RegistryAllName, imageID, access.NewReaderAccessControl())
 }
 
 // GetRegistryImageModules returns the scan modules of a registry image and a copy of its summary.

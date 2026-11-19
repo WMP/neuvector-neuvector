@@ -613,6 +613,7 @@ func systemConfigUpdate(nType cluster.ClusterNotifyType, key string, value []byt
 			log.WithError(err).Warn("Failed to set default TLS client config")
 		}
 		s3store.Configure(&cfg)
+		dtrackConfigUpdate(&cfg)
 
 		go func() {
 			scannerConfigTimeout := DefaultScannerConfigUpdateTimeout
@@ -652,6 +653,7 @@ func systemConfigUpdate(nType cluster.ClusterNotifyType, key string, value []byt
 		// Triggered at configuration import
 		cfg = common.DefaultSystemConfig
 		s3store.Configure(&cfg)
+		dtrackConfigUpdate(&cfg)
 	}
 
 	// Only apply debug flags if they change so we can apply the initial debugCPath flag correctly.

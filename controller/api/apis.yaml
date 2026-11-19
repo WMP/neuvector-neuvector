@@ -3191,6 +3191,79 @@ paths:
           description: Success
           schema:
             $ref: "#/definitions/RESTScanRepoReportData"
+  /v1/sbom/dependency_track:
+    get:
+      tags:
+        - Scan
+      summary: Get the Dependency-Track SBOM upload configuration
+      description: Requires the sbom permission in the global scope. The API key is never returned.
+      security:
+        - ApiKeyAuth: []
+        - TokenAuth: []
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/RESTDependencyTrackData"
+        "403":
+          description: The sbom permission is missing
+    patch:
+      tags:
+        - Scan
+      summary: Configure the Dependency-Track SBOM upload
+      description: Requires the sbom write permission in the global scope. Only the given fields change. The api_key field keeps the key when absent and clears it when empty.
+      security:
+        - ApiKeyAuth: []
+        - TokenAuth: []
+      consumes:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Dependency-Track configuration
+          required: true
+          schema:
+            $ref: "#/definitions/RESTDependencyTrackConfigData"
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Invalid request
+        "403":
+          description: The sbom write permission is missing
+  /v1/sbom/dependency_track/preview:
+    post:
+      tags:
+        - Scan
+      summary: Preview the Dependency-Track project of a workload
+      description: Requires the sbom write permission in the global scope, like the configuration, because the result can show any pod or namespace label used in a template. Nothing is uploaded. A template that is absent uses the stored configuration; an empty project_name or project_version uses the default. A project that cannot be rendered, or a workload that is not a scanned container, gives status 200 and skipped_reason.
+      security:
+        - ApiKeyAuth: []
+        - TokenAuth: []
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Templates to test and the workload
+          required: true
+          schema:
+            $ref: "#/definitions/RESTDependencyTrackPreviewReq"
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/RESTDependencyTrackPreview"
+        "400":
+          description: Invalid request
+        "403":
+          description: The global sbom write permission is missing
+        "404":
+          description: The workload is not found
   /v1/scan/status:
     get:
       tags:
@@ -12388,6 +12461,114 @@ definitions:
         items:
           type: string
           example: ""
+  RESTDependencyTrack:
+    type: object
+    required:
+      - enabled
+      - url
+      - api_key_set
+      - project_name
+      - project_version
+      - tags
+      - inactive_grace_period
+    properties:
+      enabled:
+        type: boolean
+      url:
+        type: string
+      api_key_set:
+        type: boolean
+        description: True when an API key is stored. The key is never returned.
+      project_name:
+        type: string
+        description: Project name template
+      project_version:
+        type: string
+        description: Project version template
+      tags:
+        type: array
+        items:
+          type: string
+      inactive_grace_period:
+        type: integer
+        format: uint32
+        description: Minutes
+  RESTDependencyTrackData:
+    type: object
+    required:
+      - config
+    properties:
+      config:
+        $ref: "#/definitions/RESTDependencyTrack"
+  RESTDependencyTrackConfig:
+    type: object
+    properties:
+      enabled:
+        type: boolean
+      url:
+        type: string
+        description: Only http and https, without credentials, query or fragment
+      api_key:
+        type: string
+        description: Absent keeps the stored key, an empty string clears it
+      project_name:
+        type: string
+        description: "Template. Symbols are {cluster}, {namespace}, {replicaset}, {service}, {pod}, {container}, {image}, {digest}, {pod.metadata.labels.KEY} and {namespace.metadata.labels.KEY}. An empty value means the default."
+      project_version:
+        type: string
+        description: Template, same symbols as project_name. An empty value means the default.
+      tags:
+        type: array
+        description: Templates, at most 50. A tag must not contain a comma.
+        items:
+          type: string
+      inactive_grace_period:
+        type: integer
+        format: uint32
+        description: Minutes, at most 525600. 0 means the default.
+  RESTDependencyTrackConfigData:
+    type: object
+    required:
+      - config
+    properties:
+      config:
+        $ref: "#/definitions/RESTDependencyTrackConfig"
+  RESTDependencyTrackPreviewReq:
+    type: object
+    required:
+      - workload_id
+    properties:
+      project_name:
+        type: string
+        description: Template, same symbols as in the configuration. Absent uses the stored value.
+      project_version:
+        type: string
+        description: Template. Absent uses the stored value.
+      tags:
+        type: array
+        description: Templates. Absent uses the stored value.
+        items:
+          type: string
+      workload_id:
+        type: string
+  RESTDependencyTrackPreview:
+    type: object
+    required:
+      - project_name
+      - project_version
+      - tags
+    properties:
+      project_name:
+        type: string
+      project_version:
+        type: string
+      tags:
+        type: array
+        items:
+          type: string
+      skipped_reason:
+        type: string
+        description: Set when no project is rendered, for example a template symbol has no value or the pod is not known yet.
   RESTSystemSummaryData:
     type: object
     required:
