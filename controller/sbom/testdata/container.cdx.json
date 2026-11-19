@@ -1,0 +1,167 @@
+{
+  "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:11111111-2222-4333-8444-555555555555",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2024-05-06T07:08:09Z",
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "name": "NeuVector"
+        }
+      ]
+    },
+    "component": {
+      "bom-ref": "root",
+      "type": "container",
+      "name": "web-1",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "abababababababababababababababababababababababababababababababab"
+        }
+      ],
+      "properties": [
+        {
+          "name": "neuvector:source",
+          "value": "running container"
+        },
+        {
+          "name": "neuvector:cluster",
+          "value": "cluster.local"
+        },
+        {
+          "name": "neuvector:id",
+          "value": "0123456789ab"
+        },
+        {
+          "name": "neuvector:namespace",
+          "value": "shop"
+        },
+        {
+          "name": "neuvector:digest",
+          "value": "sha256:abababababababababababababababababababababababababababababababab"
+        }
+      ]
+    }
+  },
+  "components": [
+    {
+      "bom-ref": "pkg-1",
+      "type": "library",
+      "name": "bash",
+      "version": "5.2.15-2",
+      "licenses": [
+        {
+          "license": {
+            "id": "GPL-3.0-or-later"
+          }
+        }
+      ],
+      "purl": "pkg:deb/debian/bash@5.2.15-2?distro=debian-12"
+    },
+    {
+      "bom-ref": "pkg-2",
+      "type": "library",
+      "name": "lodash",
+      "version": "4.17.21",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "purl": "pkg:npm/lodash@4.17.21",
+      "properties": [
+        {
+          "name": "neuvector:runtime",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg-3",
+      "type": "library",
+      "name": "nginx",
+      "version": "1.22.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause"
+          }
+        }
+      ],
+      "purl": "pkg:deb/debian/nginx@1.22.1?distro=debian-12"
+    },
+    {
+      "bom-ref": "pkg-4",
+      "type": "library",
+      "name": "openssl",
+      "version": "3.0.11-1",
+      "licenses": [
+        {
+          "expression": "Apache-2.0 AND OpenSSL"
+        }
+      ],
+      "purl": "pkg:deb/debian/openssl@3.0.11-1?distro=debian-12"
+    },
+    {
+      "bom-ref": "pkg-5",
+      "type": "library",
+      "name": "org.apache.logging.log4j:log4j-core",
+      "version": "2.14.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "purl": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
+      "properties": [
+        {
+          "name": "neuvector:runtime",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg-6",
+      "type": "library",
+      "name": "requests",
+      "version": "2.31.0",
+      "licenses": [
+        {
+          "license": {
+            "name": "Apache-2.0 OR MIT"
+          }
+        },
+        {
+          "license": {
+            "name": "BSD"
+          }
+        },
+        {
+          "license": {
+            "name": "GPL v2"
+          }
+        },
+        {
+          "license": {
+            "name": "GPL-v2"
+          }
+        },
+        {
+          "license": {
+            "name": "LicenseRef-Vendor.1"
+          }
+        }
+      ],
+      "purl": "pkg:pypi/requests@2.31.0"
+    }
+  ]
+}

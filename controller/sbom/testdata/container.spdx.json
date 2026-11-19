@@ -1,0 +1,192 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "web-1",
+  "documentNamespace": "https://neuvector.com/spdx/11111111-2222-4333-8444-555555555555",
+  "creationInfo": {
+    "creators": [
+      "Tool: NeuVector"
+    ],
+    "created": "2024-05-06T07:08:09Z",
+    "comment": "source: running container, cluster: cluster.local, id: 0123456789ab, namespace: shop, digest: sha256:abababababababababababababababababababababababababababababababab"
+  },
+  "packages": [
+    {
+      "name": "web-1",
+      "SPDXID": "SPDXRef-root",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "abababababababababababababababababababababababababababababababab"
+        }
+      ],
+      "primaryPackagePurpose": "CONTAINER"
+    },
+    {
+      "name": "bash",
+      "SPDXID": "SPDXRef-Package-1",
+      "versionInfo": "5.2.15-2",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "GPL-3.0-or-later",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:deb/debian/bash@5.2.15-2?distro=debian-12"
+        }
+      ]
+    },
+    {
+      "name": "lodash",
+      "SPDXID": "SPDXRef-Package-2",
+      "versionInfo": "4.17.21",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "runtime: found in the running container only",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:npm/lodash@4.17.21"
+        }
+      ]
+    },
+    {
+      "name": "nginx",
+      "SPDXID": "SPDXRef-Package-3",
+      "versionInfo": "1.22.1",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "BSD-2-Clause",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:deb/debian/nginx@1.22.1?distro=debian-12"
+        }
+      ]
+    },
+    {
+      "name": "openssl",
+      "SPDXID": "SPDXRef-Package-4",
+      "versionInfo": "3.0.11-1",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0 AND OpenSSL",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:deb/debian/openssl@3.0.11-1?distro=debian-12"
+        }
+      ]
+    },
+    {
+      "name": "org.apache.logging.log4j:log4j-core",
+      "SPDXID": "SPDXRef-Package-5",
+      "versionInfo": "2.14.1",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "runtime: found in the running container only",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1"
+        }
+      ]
+    },
+    {
+      "name": "requests",
+      "SPDXID": "SPDXRef-Package-6",
+      "versionInfo": "2.31.0",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "(Apache-2.0 OR MIT) AND LicenseRef-BSD AND LicenseRef-GPL-v2 AND LicenseRef-GPL-v2-2 AND LicenseRef-Vendor.1",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/requests@2.31.0"
+        }
+      ]
+    }
+  ],
+  "hasExtractedLicensingInfos": [
+    {
+      "licenseId": "LicenseRef-BSD",
+      "extractedText": "BSD",
+      "name": "BSD"
+    },
+    {
+      "licenseId": "LicenseRef-GPL-v2",
+      "extractedText": "GPL v2",
+      "name": "GPL v2"
+    },
+    {
+      "licenseId": "LicenseRef-GPL-v2-2",
+      "extractedText": "GPL-v2",
+      "name": "GPL-v2"
+    },
+    {
+      "licenseId": "LicenseRef-Vendor.1",
+      "extractedText": "LicenseRef-Vendor.1",
+      "name": "LicenseRef-Vendor.1"
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relatedSpdxElement": "SPDXRef-root",
+      "relationshipType": "DESCRIBES"
+    },
+    {
+      "spdxElementId": "SPDXRef-root",
+      "relatedSpdxElement": "SPDXRef-Package-1",
+      "relationshipType": "CONTAINS"
+    },
+    {
+      "spdxElementId": "SPDXRef-root",
+      "relatedSpdxElement": "SPDXRef-Package-2",
+      "relationshipType": "CONTAINS"
+    },
+    {
+      "spdxElementId": "SPDXRef-root",
+      "relatedSpdxElement": "SPDXRef-Package-3",
+      "relationshipType": "CONTAINS"
+    },
+    {
+      "spdxElementId": "SPDXRef-root",
+      "relatedSpdxElement": "SPDXRef-Package-4",
+      "relationshipType": "CONTAINS"
+    },
+    {
+      "spdxElementId": "SPDXRef-root",
+      "relatedSpdxElement": "SPDXRef-Package-5",
+      "relationshipType": "CONTAINS"
+    },
+    {
+      "spdxElementId": "SPDXRef-root",
+      "relatedSpdxElement": "SPDXRef-Package-6",
+      "relationshipType": "CONTAINS"
+    }
+  ]
+}

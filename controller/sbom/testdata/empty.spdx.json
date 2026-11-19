@@ -1,0 +1,30 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "nginx:1.22",
+  "documentNamespace": "https://neuvector.com/spdx/11111111-2222-4333-8444-777777777777",
+  "creationInfo": {
+    "creators": [
+      "Tool: NeuVector"
+    ],
+    "created": "2024-05-06T07:08:09Z",
+    "comment": "source: image, id: img-1"
+  },
+  "packages": [
+    {
+      "name": "nginx:1.22",
+      "SPDXID": "SPDXRef-root",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "primaryPackagePurpose": "CONTAINER"
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relatedSpdxElement": "SPDXRef-root",
+      "relationshipType": "DESCRIBES"
+    }
+  ]
+}
