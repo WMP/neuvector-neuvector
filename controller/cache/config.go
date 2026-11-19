@@ -611,6 +611,7 @@ func systemConfigUpdate(nType cluster.ClusterNotifyType, key string, value []byt
 		}, httpProxy, httpsProxy, ""); err != nil {
 			log.WithError(err).Warn("Failed to set default TLS client config")
 		}
+		dtrackConfigUpdate(&cfg)
 
 		go func() {
 			scannerConfigTimeout := DefaultScannerConfigUpdateTimeout

@@ -1917,6 +1917,7 @@ func startWorkerThread(ctx *Context) {
 					if ev.ResourceOld != nil {
 						o = ev.ResourceOld.(*resource.Pod)
 					}
+					dtrackPodUpdate(n, o)
 
 					// Assume IP doesn't change. Ignore host mode containers.
 					if (o == nil || o.IPNet.IP == nil) && (n != nil && !n.HostNet && n.IPNet.IP != nil) {
@@ -2321,6 +2322,7 @@ func Init(ctx *Context, leader bool, leadAddr, restoredFedRole string) CacheInte
 
 	go ProcReportBkgSvc()
 	go FileReportBkgSvc()
+	go dtrackSweepLoop()
 	return &cacher
 }
 

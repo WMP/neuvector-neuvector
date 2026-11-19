@@ -665,6 +665,15 @@ func (m *scanMethod) GetRegistryImageReport(name, id string, vpf scanUtils.VPFIn
 	return &rrpt, nil
 }
 
+// RegistryImageModules returns the modules and summary of the scanned image imageID from any registry, without access filtering.
+// It returns nil when the scan module is not initialized.
+func RegistryImageModules(imageID string) ([]*share.ScanModule, *share.CLUSRegistryImageSummary, error) {
+	if smd == nil {
+		return nil, nil, nil
+	}
+	return smd.GetRegistryImageModules(common.RegistryAllName, imageID, access.NewReaderAccessControl())
+}
+
 // GetRegistryImageModules returns the scan modules of a registry image and a copy of its summary.
 // It applies the same registry lookup and access checks as GetRegistryImageReport.
 func (m *scanMethod) GetRegistryImageModules(name, id string, acc *access.AccessControl) ([]*share.ScanModule, *share.CLUSRegistryImageSummary, error) {
