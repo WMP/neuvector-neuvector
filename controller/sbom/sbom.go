@@ -123,8 +123,10 @@ func isOSModule(m *share.ScanModule) bool {
 	return m.Source == "" || strings.Contains(m.Source, ":")
 }
 
-// componentName matches the name in the purl (scanUtils.ModulePurl): OS packages use the
-// binary name of "upstream/binary" and "openssl" for "opensslxx"; applications lose the NeuVector prefix.
+// componentName returns the component name. For OS packages it matches the name in the purl
+// (scanUtils.ModulePurl): the binary name of "upstream/binary", and "openssl" for "opensslxx".
+// Application names (jar, npm, golang, ...) only lose the NeuVector ecosystem prefix and can
+// differ from the purl name.
 func componentName(m *share.ScanModule) string {
 	if isOSModule(m) {
 		if _, bin, ok := strings.Cut(m.Name, "/"); ok && bin != "" {

@@ -118,6 +118,13 @@ func TestClassifyLicense(t *testing.T) {
 		{"MIT AND Foo", licenseText, "MIT AND Foo"},
 		{"MIT GPL-2.0-only", licenseText, "MIT GPL-2.0-only"},
 		{"  MIT  ", licenseID, "MIT"},
+		{"Classpath-exception-2.0", licenseText, "Classpath-exception-2.0"},
+		{"MIT WITH Apache-2.0", licenseText, "MIT WITH Apache-2.0"},
+		{"Classpath-exception-2.0 WITH MIT", licenseText, "Classpath-exception-2.0 WITH MIT"},
+		{"MIT WITH Classpath-exception-2.0+", licenseText, "MIT WITH Classpath-exception-2.0+"},
+		{"(MIT) WITH Classpath-exception-2.0", licenseText, "(MIT) WITH Classpath-exception-2.0"},
+		{"LicenseRef-x+", licenseText, "LicenseRef-x+"},
+		{"GPL-2.0-or-later WITH classpath-exception-2.0", licenseExpr, "GPL-2.0-or-later WITH Classpath-exception-2.0"},
 		{"apache-2.0+", licenseExpr, "Apache-2.0+"},
 		{"(MIT)", licenseExpr, "(MIT)"},
 		{"Foo+", licenseText, "Foo+"},
@@ -127,6 +134,22 @@ func TestClassifyLicense(t *testing.T) {
 		if kind != tc.kind || norm != tc.norm {
 			t.Errorf("classifyLicense(%q) = %v, %q; want %v, %q", tc.in, kind, norm, tc.kind, tc.norm)
 		}
+	}
+}
+
+func TestSPDXIDSplit(t *testing.T) {
+	for _, id := range []string{"mit", "gpl-2.0-with-classpath-exception"} {
+		if _, ok := spdxLicenses[id]; !ok {
+			t.Errorf("%q must be a license ID", id)
+		}
+	}
+	for _, id := range []string{"classpath-exception-2.0", "llvm-exception"} {
+		if _, ok := spdxExceptions[id]; !ok {
+			t.Errorf("%q must be an exception ID", id)
+		}
+	}
+	if n := len(spdxLicenses); n <= 600 {
+		t.Errorf("split index %d, want > 600", n)
 	}
 }
 
