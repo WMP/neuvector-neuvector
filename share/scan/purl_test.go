@@ -41,6 +41,8 @@ func TestPurlModule(t *testing.T) {
 		{"cran-ggplot2", "3.0", "r", "", "pkg:cran/ggplot2@3.0"},
 		{"https://x.r-universe.dev-foo", "1", "r", "", "pkg:cran/foo@1"},
 		{"foo", "1", "r", "", "pkg:cran/foo@1"},
+		{"The Apache Software Foundation:commons-io", "2", "jar", "", ""},
+		{"go:../lib", "", "golang", "", ""},
 		{"redis", "7.2.4", "redis", "", "pkg:bitnami/redis@7.2.4"},
 	}
 	for _, c := range cases {
@@ -58,6 +60,7 @@ func TestPurlMergeKey(t *testing.T) {
 	assert.Equal(t, PurlMergeKey("pkg:golang/github.com/a/b@1.0"), PurlMergeKey("pkg:golang/github.com/A/b@v1.0"))
 	assert.Equal(t, "deb/debian/curl@1", PurlMergeKey("pkg:deb/debian/Curl@1?arch=x#a"))
 	assert.Equal(t, "npm/@angular/core@1.0", PurlMergeKey("pkg:npm/%40angular/core@1.0?a=b#x/y"))
+	assert.Equal(t, "cran/rcpp@1", PurlMergeKey("pkg:cran/Rcpp@1"))
 	for _, p := range []string{"", "foo", "pkg:x", "pkg:npm/", "pkg:npm/@1"} {
 		assert.Equal(t, "", PurlMergeKey(p), p)
 	}

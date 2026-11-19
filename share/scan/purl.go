@@ -159,6 +159,8 @@ func PurlMergeKey(purl string) string {
 	}
 	if c.typ == "golang" {
 		c.version = strings.TrimPrefix(c.version, "v")
+	} else if c.typ == "cran" { // NeuVector lowercases R package names
+		c.name = strings.ToLower(c.name)
 	}
 	if c.namespace != "" {
 		c.namespace += "/"
@@ -206,7 +208,7 @@ func ModulePurl(m *share.ScanModule, namespace string) string {
 	switch src {
 	case "jar":
 		g, a, _ := strings.Cut(name, ":")
-		if a == "" || g == "jar" || strings.Contains(a, " ") { // no groupId, or a MANIFEST title as artifactId
+		if a == "" || g == "jar" || strings.ContainsRune(name, ' ') { // no groupId, or MANIFEST vendor/title text
 			return ""
 		}
 		return BuildPurl("maven", g, a, ver, nil, "")
@@ -219,6 +221,9 @@ func ModulePurl(m *share.ScanModule, namespace string) string {
 		return BuildPurl("gem", "", pre("ruby:"), ver, nil, "")
 	case "golang":
 		n := pre("go:")
+		if strings.HasPrefix(n, ".") || strings.HasPrefix(n, "/") { // local replace path, not a module path
+			return ""
+		}
 		if n == "stdlib" {
 			return BuildPurl("golang", "", n, ver, nil, "")
 		}
