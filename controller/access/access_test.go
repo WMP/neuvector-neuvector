@@ -2129,3 +2129,20 @@ func TestSBOMPermission(t *testing.T) {
 
 	postTest()
 }
+
+func TestSBOMAllReadCustomRole(t *testing.T) {
+	preTest()
+
+	// a custom role saved before sbom existed: all other selectable read permissions
+	AddRole("all-read-old", &share.CLUSUserRoleInternal{ReadPermits: share.PERMS_GLOBAL_CONFIGURABLE_READ &^ share.PERM_SBOM})
+	AddRole("all-read-new", &share.CLUSUserRoleInternal{ReadPermits: share.PERMS_GLOBAL_CONFIGURABLE_READ})
+	defer DeleteRole("all-read-old")
+	defer DeleteRole("all-read-new")
+
+	if r, _ := getRolePermitValues("all-read-old", AccessDomainGlobal); r != share.PERMS_CLUSTER_READ&^share.PERM_SBOM {
+		t.Errorf("old all-read role: read=%#x, want cluster read without sbom", r)
+	}
+	if r, _ := getRolePermitValues("all-read-new", AccessDomainGlobal); r != share.PERMS_CLUSTER_READ {
+		t.Errorf("all-read role with sbom: read=%#x, want cluster read", r)
+	}
+}

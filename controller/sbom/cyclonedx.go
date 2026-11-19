@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
@@ -65,6 +66,9 @@ func cdxLicenses(lics []string) *cdx.Licenses {
 	if len(lics) == 0 {
 		return nil
 	}
+	if expr, ok := andExpression(lics); ok && len(lics) > 1 {
+		return &cdx.Licenses{{Expression: expr}}
+	}
 	var out cdx.Licenses
 	for _, l := range lics {
 		kind, norm := classifyLicense(l)
@@ -80,4 +84,23 @@ func cdxLicenses(lics []string) *cdx.Licenses {
 		}
 	}
 	return &out
+}
+
+// andExpression joins licenses into one SPDX AND expression, as the SPDX writer does.
+// ok is false when a license is free text or none is a compound expression.
+func andExpression(lics []string) (string, bool) {
+	parts := make([]string, len(lics))
+	hasExpr := false
+	for i, l := range lics {
+		kind, norm := classifyLicense(l)
+		switch kind {
+		case licenseText:
+			return "", false
+		case licenseExpr:
+			hasExpr = true
+			norm = "(" + norm + ")"
+		}
+		parts[i] = norm
+	}
+	return strings.Join(parts, " AND "), hasExpr
 }

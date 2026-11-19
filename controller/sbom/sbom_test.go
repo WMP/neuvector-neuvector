@@ -261,3 +261,26 @@ func TestGolden(t *testing.T) {
 		}
 	}
 }
+
+func TestDuplicateKeepsPurl(t *testing.T) {
+	first := mod("jar", "Foo Bar", "1") // MANIFEST text: no purl
+	second := mod("jar", "Foo Bar", "1")
+	second.Purl = "pkg:maven/org.example/foo@1"
+	if got := Components([]*share.ScanModule{first, second}, "", nil); len(got) != 1 || got[0].Purl != second.Purl {
+		t.Errorf("got %+v", got)
+	}
+}
+
+func TestCDXLicensesExpression(t *testing.T) {
+	got := cdxLicenses([]string{"MIT", "apache-2.0 or gpl-2.0-only"})
+	if got == nil || len(*got) != 1 || (*got)[0].Expression != "MIT AND (Apache-2.0 OR GPL-2.0-only)" {
+		t.Errorf("expression with another license: %+v", got)
+	}
+	// free text cannot be part of an expression: separate license entries
+	if got := cdxLicenses([]string{"GPL v2", "MIT OR Apache-2.0"}); got == nil || len(*got) != 2 || (*got)[1].License == nil || (*got)[1].License.Name != "MIT OR Apache-2.0" {
+		t.Errorf("with free text: %+v", got)
+	}
+	if got := cdxLicenses([]string{"MIT", "Apache-2.0"}); got == nil || len(*got) != 2 || (*got)[0].License.ID != "MIT" {
+		t.Errorf("only IDs: %+v", got)
+	}
+}

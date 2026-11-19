@@ -15,6 +15,7 @@ import (
 	"github.com/neuvector/neuvector/controller/common"
 	"github.com/neuvector/neuvector/controller/sbom"
 	"github.com/neuvector/neuvector/share"
+	scanUtils "github.com/neuvector/neuvector/share/scan"
 )
 
 // sbomPrepare does the permission and format checks common to all SBOM handlers.
@@ -90,6 +91,9 @@ func imageScanModules(acc *access.AccessControl, imageID string) ([]*share.ScanM
 	if err != nil || sum == nil {
 		return nil, nil
 	}
+	if modules == nil { // a scan with no modules still exists: everything in the container is runtime
+		modules = []*share.ScanModule{}
+	}
 	return modules, sum
 }
 
@@ -97,11 +101,6 @@ func imageScanModules(acc *access.AccessControl, imageID string) ([]*share.ScanM
 func sbomWorkload(w http.ResponseWriter, acc *access.AccessControl, login *loginSession, format, id, source, name string) {
 	wl, err := cacher.GetWorkload(id, "", acc)
 	if err != nil || wl == nil {
-		sbomRespErr(w, login, err)
-		return
-	}
-	modules, baseOS, err := cacher.GetScanModules(id)
-	if err != nil {
 		sbomRespErr(w, login, err)
 		return
 	}
@@ -116,14 +115,19 @@ func sbomWorkload(w http.ResponseWriter, acc *access.AccessControl, login *login
 	}
 	meta := sbom.Meta{Source: source, Name: name, ID: id, Digest: wl.ImageDigest}
 	imgModules, sum := imageScanModules(acc, wl.ImageID)
-	if source == sbom.SourceImage {
-		if sum != nil { // the image scan is the image content
-			if sum.Digest != "" {
-				meta.Digest = sum.Digest
-			}
-			sbomRespond(w, format, meta, imgModules, sum.BaseOS, nil)
-			return
+	if source == sbom.SourceImage && sum != nil { // the image scan is the image content
+		if sum.Digest != "" {
+			meta.Digest = sum.Digest
 		}
+		sbomRespond(w, format, meta, imgModules, sum.BaseOS, nil)
+		return
+	}
+	modules, baseOS, err := cacher.GetScanModules(id)
+	if err != nil {
+		sbomRespErr(w, login, err)
+		return
+	}
+	if source == sbom.SourceImage {
 		sbomRespond(w, format, meta, modules, baseOS, nil)
 		return
 	}
@@ -155,7 +159,8 @@ func handlerScanImageSBOM(w http.ResponseWriter, r *http.Request, ps httprouter.
 	var brief *api.RESTWorkloadBrief
 	for _, wl := range cacher.GetAllWorkloadsBrief("", acc) {
 		// lowest workload ID: the same request always gives the same document
-		if wl.ImageID == id && wl.ScanSummary != nil && wl.ScanSummary.Status == api.ScanStatusFinished && (brief == nil || wl.ID < brief.ID) {
+		if wl.ImageID == id && wl.ScanSummary != nil && wl.ScanSummary.Status == api.ScanStatusFinished &&
+			wl.ScanSummary.Result == scanUtils.ScanErrorToStr(share.ScanErrorCode_ScanErrNone) && (brief == nil || wl.ID < brief.ID) {
 			brief = wl
 		}
 	}

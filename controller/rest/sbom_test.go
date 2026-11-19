@@ -14,11 +14,13 @@ import (
 	"github.com/neuvector/neuvector/controller/kv"
 	"github.com/neuvector/neuvector/controller/scan"
 	"github.com/neuvector/neuvector/share"
+	scanUtils "github.com/neuvector/neuvector/share/scan"
 )
 
 type sbomMockCache struct {
 	mockCache
-	wlImageID string // image ID of the mocked workloads
+	wlImageID     string // image ID of the mocked workloads
+	runtimeFailed bool   // the runtime scans of the mocked workloads failed
 }
 
 func (m *sbomMockCache) GetWorkload(id, view string, acc *access.AccessControl) (*api.RESTWorkload, error) {
@@ -51,10 +53,13 @@ func (m *sbomMockCache) GetHost(id string, acc *access.AccessControl) (*api.REST
 
 func (m *sbomMockCache) GetAllWorkloadsBrief(view string, acc *access.AccessControl) []*api.RESTWorkloadBrief {
 	return []*api.RESTWorkloadBrief{{ID: "wl1", ImageID: "img1", Domain: "ns1",
-		ScanSummary: &api.RESTScanBrief{Status: api.ScanStatusFinished}}}
+		ScanSummary: &api.RESTScanBrief{Status: api.ScanStatusFinished, Result: scanUtils.ScanErrorToStr(share.ScanErrorCode_ScanErrNone)}}}
 }
 
 func (m *sbomMockCache) GetScanModules(id string) ([]*share.ScanModule, string, error) {
+	if m.runtimeFailed {
+		return nil, "", common.ErrObjectNotFound
+	}
 	switch id {
 	case "wl-notscanned":
 		return nil, "", common.ErrObjectNotFound
@@ -257,6 +262,16 @@ func TestSBOMImageSource(t *testing.T) {
 	}
 	if body := w.Body.String(); !strings.Contains(body, "registrymod") || strings.Contains(body, "runtimemod") {
 		t.Errorf("image SBOM must be built from the image scan: %s", body)
+	}
+
+	// the image scan does not need a good runtime scan
+	cacher = &sbomMockCache{wlImageID: "img1", runtimeFailed: true}
+	if w = sbomCall("/v1/scan/image/img1/sbom", api.UserRoleAdmin, nil); w.Code != http.StatusOK {
+		t.Errorf("failed runtime scan with image scan: status=%d, want 200", w.Code)
+	}
+	cacher = &sbomMockCache{wlImageID: "noimg", runtimeFailed: true}
+	if w = sbomCall("/v1/scan/image/img1/sbom", api.UserRoleAdmin, nil); w.Code != http.StatusNotFound {
+		t.Errorf("failed runtime scan without image scan: status=%d, want 404", w.Code)
 	}
 
 	// no accessible image scan: fall back to the runtime scan of the workload

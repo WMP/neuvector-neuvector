@@ -2,6 +2,7 @@ package scan
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -706,7 +707,8 @@ func (m *scanMethod) GetRegistryImageModules(name, id string, acc *access.Access
 				return modules, sum, nil
 			}
 		}
-		if name != common.RegistryAllName {
+		// for "all", try the next registry only when the image is not there or not accessible
+		if name != common.RegistryAllName || (!errors.Is(err, common.ErrObjectNotFound) && !errors.Is(err, common.ErrObjectAccessDenied)) {
 			return nil, nil, err
 		}
 	}

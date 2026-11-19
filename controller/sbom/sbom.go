@@ -98,6 +98,9 @@ func Components(modules []*share.ScanModule, namespace string, image []*share.Sc
 			byKey[mkKey(m)] = c
 			comps = append(comps, c)
 		}
+		if c.Purl == "" { // a duplicate can carry the purl the first module lacks
+			c.Purl = scanUtils.ModulePurl(m, namespace)
+		}
 		c.Licenses = append(c.Licenses, m.Licenses...)
 	}
 
