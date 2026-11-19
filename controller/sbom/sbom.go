@@ -71,17 +71,16 @@ func Components(modules []*share.ScanModule, namespace string, image []*share.Sc
 		}
 	}
 
-	// Modules match by Source+Name+Version, or by the full purl (the scanner sets the same purl
-	// on e.g. the pom.properties and MANIFEST.MF modules of one jar, or one npm package in 2 directories).
-	// The full purl keeps qualifiers such as the rpm epoch, so different packages never merge.
+	// Modules match by Source+Name+Version, or by purlKey (the scanner sets the same purl on e.g.
+	// the pom.properties and MANIFEST.MF modules of one jar, or one npm package in 2 directories).
 	type key struct{ source, name, version string }
 	mkKey := func(m *share.ScanModule) key { return key{m.Source, m.Name, m.Version} }
 	imageLicenses := map[key][]string{}
 	imagePurls := map[string][]string{}
 	for _, m := range image {
 		imageLicenses[mkKey(m)] = append(imageLicenses[mkKey(m)], m.Licenses...)
-		if p := scanUtils.ModulePurl(m, namespace); p != "" {
-			imagePurls[p] = append(imagePurls[p], m.Licenses...)
+		if k := purlKey(scanUtils.ModulePurl(m, namespace)); k != "" {
+			imagePurls[k] = append(imagePurls[k], m.Licenses...)
 		}
 	}
 
@@ -96,18 +95,19 @@ func Components(modules []*share.ScanModule, namespace string, image []*share.Sc
 			}
 		}
 		purl := scanUtils.ModulePurl(m, namespace)
-		c := byPurl[purl]
-		if c == nil || purl == "" {
-			if c = byKey[mkKey(m)]; c != nil && c.Purl != "" && purl != "" && c.Purl != purl {
-				c = nil // same NeuVector name, different package
+		pk := purlKey(purl)
+		c := byPurl[pk]
+		if c == nil || pk == "" {
+			if c = byKey[mkKey(m)]; c != nil && pk != "" && purlKey(c.Purl) != "" && purlKey(c.Purl) != pk {
+				c = nil // same NeuVector name, different package (e.g. rpm epoch)
 			}
 		}
 		runtime := false
 		var imageLic []string
 		if image != nil {
 			lic, found := imageLicenses[mkKey(m)]
-			plic, pfound := imagePurls[purl]
-			runtime = !found && (purl == "" || !pfound)
+			plic, pfound := imagePurls[pk]
+			runtime = !found && (pk == "" || !pfound)
 			imageLic = append(append(imageLic, lic...), plic...)
 		}
 		if c == nil {
@@ -118,13 +118,18 @@ func Components(modules []*share.ScanModule, namespace string, image []*share.Sc
 		if c.Purl == "" {
 			c.Purl = purl
 		}
+		if m.Version < c.Version { // e.g. Go "1.22.1" rather than "1.22.1 X:boringcrypto": same purl, fixed choice
+			c.Version = m.Version
+		}
 		if m.Source == "jar" && !isMavenName(c.Name) && isMavenName(m.Name) {
 			c.Name = m.Name // pom.properties groupId:artifactId rather than the MANIFEST.MF title
 		}
 		c.Licenses = append(append(c.Licenses, imageLic...), m.Licenses...)
-		byKey[mkKey(m)] = c
-		if c.Purl != "" {
-			byPurl[c.Purl] = c
+		if byKey[mkKey(m)] == nil { // the first component keeps the key: fixed choice for later modules
+			byKey[mkKey(m)] = c
+		}
+		if k := purlKey(c.Purl); k != "" {
+			byPurl[k] = c
 		}
 	}
 
@@ -146,8 +151,26 @@ func Components(modules []*share.ScanModule, namespace string, image []*share.Sc
 	return out
 }
 
+// isMavenName reports a pom.properties "groupId:artifactId" name; MANIFEST.MF modules are
+// "vendor:title", with vendor "jar" when unknown, or contain spaces.
 func isMavenName(name string) bool {
-	return strings.Contains(name, ":") && !strings.Contains(name, " ")
+	g, a, ok := strings.Cut(name, ":")
+	return ok && g != "jar" && a != "" && !strings.Contains(name, " ")
+}
+
+var purlEpoch = regexp.MustCompile(`[?&]epoch=([^&#]+)`)
+
+// purlKey is the merge key of a purl: scanUtils.PurlMergeKey plus the rpm epoch. It is "" for no purl
+// and for generic purls, which NeuVector derives from the Source only, so different modules share them.
+func purlKey(purl string) string {
+	if strings.HasPrefix(purl, "pkg:generic/") {
+		return ""
+	}
+	k := scanUtils.PurlMergeKey(purl)
+	if e := purlEpoch.FindStringSubmatch(purl); k != "" && e != nil {
+		k += "?epoch=" + e[1]
+	}
+	return k
 }
 
 func isOSModule(m *share.ScanModule) bool {

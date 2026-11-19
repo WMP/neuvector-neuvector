@@ -202,7 +202,7 @@ func TestGolden(t *testing.T) {
 	syft.Origin = "syft"
 	nginxApp := mod("nginx", "nginx", "1.22.1")
 	pom := mod("jar", "com.fasterxml.jackson.core:jackson-core", "2.15.2")
-	manifest := mod("jar", "Jackson-core", "2.15.2", "Apache-2.0") // same jar, MANIFEST.MF module
+	manifest := mod("jar", "jar:jackson-core", "2.15.2", "Apache-2.0") // same jar, MANIFEST.MF module
 	pom.Purl = "pkg:maven/com.fasterxml.jackson.core/jackson-core@2.15.2"
 	manifest.Purl = pom.Purl
 
@@ -295,7 +295,7 @@ func TestMergeByPurl(t *testing.T) {
 	const log4j = "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1"
 	withPurl := func(m *share.ScanModule, purl string) *share.ScanModule { m.Purl = purl; return m }
 	manifest := func() *share.ScanModule {
-		return withPurl(mod("jar", "Apache Log4j Core", "2.14.1", "Apache-2.0"), log4j)
+		return withPurl(mod("jar", "jar:log4j-core", "2.14.1", "Apache-2.0"), log4j) // scanner: "vendor:title"
 	}
 	pom := func() *share.ScanModule {
 		return withPurl(mod("jar", "org.apache.logging.log4j:log4j-core", "2.14.1"), log4j)
@@ -332,5 +332,46 @@ func TestMergeByPurl(t *testing.T) {
 	r1.Purl, r2.Purl = "pkg:rpm/centos/bash@4.2?epoch=1", "pkg:rpm/centos/bash@4.2?epoch=2"
 	if got := Components([]*share.ScanModule{r1, r2}, "", nil); len(got) != 2 {
 		t.Errorf("different purls: %+v", got)
+	}
+
+	// a scanner purl with more qualifiers and a derived purl of the same key: one component
+	d1, d2 := mod("debian:12", "bash", "5.2"), mod("debian:12", "bash", "5.2")
+	d1.Purl = "pkg:deb/debian/bash@5.2?arch=amd64&distro=debian-12"
+	if got := Components([]*share.ScanModule{d1, d2}, "", nil); len(got) != 1 {
+		t.Errorf("scanner and derived purl: %+v", got)
+	}
+
+	// generic purls come from the Source only: different modules stay separate
+	o1, o2 := mod("openshift", "openshift.kubernetes", "4.14"), mod("openshift", "openshift", "4.14")
+	if got := Components([]*share.ScanModule{o1, o2}, "", nil); len(got) != 2 {
+		t.Errorf("generic purls: %+v", got)
+	}
+
+	// image match by the normalized key (golang "v" prefix)
+	g := mod("golang", "go:github.com/a/b", "1.0")
+	gImg := withPurl(mod("golang", "go:github.com/a/b", "v1.0", "MIT"), "pkg:golang/github.com/a/b@v1.0")
+	if got := Components([]*share.ScanModule{g}, "", []*share.ScanModule{gImg}); len(got) != 1 || got[0].Runtime || len(got[0].Licenses) != 1 {
+		t.Errorf("image match by key: %+v", got)
+	}
+
+	// same purl, different version strings: the smaller one, whatever the order
+	s1, s2 := mod("golang", "go:stdlib", "1.22.1 X:boringcrypto"), mod("golang", "go:stdlib", "1.22.1")
+	for _, mods := range [][]*share.ScanModule{{s1, s2}, {s2, s1}} {
+		if got := Components(mods, "", nil); len(got) != 1 || got[0].Version != "1.22.1" {
+			t.Errorf("stdlib versions: %+v", got)
+		}
+	}
+
+	// a module without purl joins the first component of its key
+	j1, j2, j3 := mod("jar", "Foo Bar", "1"), mod("jar", "Foo Bar", "1"), mod("jar", "Foo Bar", "1", "MIT")
+	j1.Purl, j2.Purl = "pkg:maven/a/foo@1", "pkg:maven/b/foo@1"
+	got := Components([]*share.ScanModule{j1, j2, j3}, "", nil)
+	if len(got) != 2 {
+		t.Fatalf("no-purl module: %+v", got)
+	}
+	for _, c := range got {
+		if (c.Purl == j1.Purl) != (len(c.Licenses) == 1) {
+			t.Errorf("no-purl module must join the first component: %+v", got)
+		}
 	}
 }
