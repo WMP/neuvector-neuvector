@@ -1031,12 +1031,71 @@ func getCrtTestFunction(crt *share.CLUSAdmRuleCriterion, comparisonOp string) fu
 	}
 }
 
+// "name>=2.0.0<2.17.1": two or more bounds that must all hold for the same version.
+var modulesRangeRegexp = regexp.MustCompile(`^([^<>=]+?)\s*((?:(?:<=|>=|<|>)\s*[^<>=\s]+\s*){2,})$`)
+var modulesBoundRegexp = regexp.MustCompile(`(<=|>=|<|>)\s*([^<>=\s]+)`)
+
+// ValidateModulesCriterionValue checks one comma-separated entry of a modules criterion value.
+// Only entries with a version comparison (<, >, <=, >=) are checked; "=" and plain names are not.
+func ValidateModulesCriterionValue(value string) error {
+	value = strings.TrimSpace(value)
+	if !strings.ContainsAny(value, "<>") {
+		return nil
+	}
+	if m := modulesRangeRegexp.FindStringSubmatch(value); m != nil {
+		for _, b := range modulesBoundRegexp.FindAllStringSubmatch(m[2], -1) {
+			if _, err := utils.NewVersion(b[2]); err != nil {
+				return fmt.Errorf("invalid version %q in modules criterion value %q", b[2], value)
+			}
+		}
+		return nil
+	}
+	operator, idx := getCrtValOperator(value, []string{"=", ">", "<", ">=", "<="})
+	if operator == "=" {
+		return nil
+	}
+	if idx < 0 || strings.TrimSpace(value[:idx]) == "" {
+		return fmt.Errorf("missing module name in modules criterion value %q", value)
+	}
+	if _, err := utils.NewVersion(value[idx+len(operator):]); err != nil {
+		return fmt.Errorf("invalid version in modules criterion value %q", value)
+	}
+	return nil
+}
+
 func isComplexMapCriterionMet(crt *share.CLUSAdmRuleCriterion, propMap map[string][]string) (bool, bool) {
 	if len(propMap) > 0 {
 		crtValMap := map[string][]criterionValue{}
 		for _, crtValString := range crt.ValueSlice {
 			var key string
 			var val criterionValue
+			var m []string
+			if crt.Name == share.CriteriaKeyModules {
+				m = modulesRangeRegexp.FindStringSubmatch(crtValString)
+			}
+			if m != nil {
+				key = strings.TrimSpace(m[1])
+				var tests []func(string, string) bool
+				var vals []string
+				for _, b := range modulesBoundRegexp.FindAllStringSubmatch(m[2], -1) {
+					tests = append(tests, getCrtTestFunction(crt, b[1]))
+					vals = append(vals, b[2])
+				}
+				val = criterionValue{
+					Value:    crtValString,
+					Operator: "RANGE",
+					Test: func(_ string, propVal string) bool {
+						for i, test := range tests {
+							if !test(vals[i], propVal) {
+								return false
+							}
+						}
+						return true
+					},
+				}
+				crtValMap[key] = append(crtValMap[key], val)
+				continue
+			}
 			if operator, operatorIndex := getCrtValOperator(crtValString, getValidMapOperators(crt)); operator != "" {
 				key = strings.TrimSpace(crtValString[:operatorIndex])
 				val = criterionValue{
@@ -1319,6 +1378,9 @@ func isImageCriterionMet(crt *share.CLUSAdmRuleCriterion, c *nvsysadmission.AdmC
 func isModulesCriterionMet(crt *share.CLUSAdmRuleCriterion, modules []*share.ScanModule) (bool, bool) {
 	var nameVersionMap = make(map[string][]string)
 	for _, module := range modules {
+		if module.Origin == "syft" { // Syft-only modules must not change rule results
+			continue
+		}
 		nameVersionMap[module.Name] = append(nameVersionMap[module.Name], module.Version)
 	}
 
