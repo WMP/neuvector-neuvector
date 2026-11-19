@@ -415,9 +415,10 @@ func getRolePermitValues(roleName, domain string) (uint32, uint32) {
 				if !role.Reserved {
 					// it's custom role on global domain
 					// if this custom role has all selectable read permissions, let it has all local(including hidden) read permissions.
-					// sbom is not required: roles saved before sbom existed keep this, but get sbom only when it is set.
+					// sbom is not required, so roles saved before sbom existed keep the promotion (callers check PERMS_CLUSTER_READ);
+					// sbom read gives no new data to a role that can read all scan reports.
 					if roleReadPermits&^share.PERM_SBOM == share.PERMS_GLOBAL_CONFIGURABLE_READ&^share.PERM_SBOM {
-						roleReadPermits = share.PERMS_CLUSTER_READ&^share.PERM_SBOM | roleReadPermits&share.PERM_SBOM
+						roleReadPermits = share.PERMS_CLUSTER_READ
 					}
 				}
 				return roleReadPermits, role.WritePermits & share.PERMS_FED_WRITE
