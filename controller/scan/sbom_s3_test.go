@@ -22,7 +22,7 @@ func configS3(t *testing.T, srv *s3fake.Server, enabled bool) {
 
 // store runs the upload synchronously, as the scan task would in a goroutine.
 func store(r *share.ScanResult) {
-	if up := takeFullSBOM(r, r.Digest); up != nil {
+	if up := takeFullSBOM(r, "reg1", "img1", r.Digest); up != nil {
 		up()
 	}
 }
@@ -90,16 +90,16 @@ func TestStoreFullSBOMDropped(t *testing.T) {
 
 	// the tag moved between the listing and the scan
 	r := sbomResult("sha256:"+strings.Repeat("b", 64), share.FullSBOMFormatCycloneDX, gz)
-	require.Nil(t, takeFullSBOM(r, testDigest))
+	require.Nil(t, takeFullSBOM(r, "reg1", "img1", testDigest))
 	require.Nil(t, r.FullSBOM)
 
 	// too large
 	big := make([]byte, s3store.MaxObjectSize+1)
 	big[0], big[1] = 0x1f, 0x8b
-	require.Nil(t, takeFullSBOM(sbomResult(testDigest, share.FullSBOMFormatCycloneDX, big), testDigest))
+	require.Nil(t, takeFullSBOM(sbomResult(testDigest, share.FullSBOMFormatCycloneDX, big), "reg1", "img1", testDigest))
 
 	// storage changed after the scan: the old store is not used
-	up := takeFullSBOM(sbomResult(testDigest, share.FullSBOMFormatCycloneDX, gz), testDigest)
+	up := takeFullSBOM(sbomResult(testDigest, share.FullSBOMFormatCycloneDX, gz), "reg1", "img1", testDigest)
 	require.NotNil(t, up)
 	configS3(t, srv, false)
 	up()

@@ -38,6 +38,31 @@ const (
 
 var ErrNotFound = errors.New("SBOM object not found")
 
+// ErrNotOwner: the object was written by the scan of another registry image with the same digest.
+var ErrNotOwner = errors.New("SBOM object belongs to another registry image")
+
+// The digest comes from the registry, so any registry, also one a namespace user adds, can claim the
+// digest of another image. The object keeps the registry image that wrote it and is served only to it.
+const ownerMeta = "Nv-Owner"
+
+func owner(registry, imageID string) string {
+	return url.QueryEscape(registry) + "/" + url.QueryEscape(imageID)
+}
+
+func ownedBy(meta map[string]*string, registry, imageID string) bool {
+	for k, v := range meta {
+		if strings.EqualFold(k, ownerMeta) {
+			return aws.StringValue(v) == owner(registry, imageID)
+		}
+	}
+	return false
+}
+
+func isNotFound(err error) bool {
+	var ae awserr.RequestFailure
+	return errors.As(err, &ae) && (ae.Code() == s3.ErrCodeNoSuchKey || (ae.StatusCode() == http.StatusNotFound && ae.Code() != s3.ErrCodeNoSuchBucket))
+}
+
 var (
 	digestRe = regexp.MustCompile(`^(sha256:[0-9a-f]{64}|sha512:[0-9a-f]{128})$`)
 	regionRe = regexp.MustCompile(`^[a-z0-9-]{1,64}$`)
@@ -173,7 +198,8 @@ func (s *Store) Key(digest string) (string, error) {
 	return s.base + digest + objSuffix, nil
 }
 
-func (s *Store) Put(ctx context.Context, digest string, gz []byte) error {
+// Put stores the document of the registry image (registry name, image ID) under its digest.
+func (s *Store) Put(ctx context.Context, digest, registry, imageID string, gz []byte) error {
 	key, err := s.Key(digest)
 	if err != nil {
 		return err
@@ -183,6 +209,7 @@ func (s *Store) Put(ctx context.Context, digest string, gz []byte) error {
 		Key:         aws.String(key),
 		Body:        bytes.NewReader(gz),
 		ContentType: aws.String("application/gzip"),
+		Metadata:    map[string]*string{ownerMeta: aws.String(owner(registry, imageID))},
 	})
 	if err != nil {
 		return fmt.Errorf("SBOM put failed: %w", err)
@@ -190,20 +217,40 @@ func (s *Store) Put(ctx context.Context, digest string, gz []byte) error {
 	return nil
 }
 
-func (s *Store) Open(ctx context.Context, digest string) (io.ReadCloser, error) {
+// Open returns the gzip document of the registry image; ErrNotFound or ErrNotOwner when there is none.
+func (s *Store) Open(ctx context.Context, digest, registry, imageID string) (io.ReadCloser, error) {
 	key, err := s.Key(digest)
 	if err != nil {
 		return nil, err
 	}
 	out, err := s.api.GetObjectWithContext(ctx, &s3.GetObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)})
 	if err != nil {
-		var ae awserr.RequestFailure
-		if errors.As(err, &ae) && (ae.Code() == s3.ErrCodeNoSuchKey || (ae.StatusCode() == http.StatusNotFound && ae.Code() != s3.ErrCodeNoSuchBucket)) {
+		if isNotFound(err) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("SBOM get failed: %w", err)
 	}
+	if !ownedBy(out.Metadata, registry, imageID) {
+		out.Body.Close()
+		return nil, ErrNotOwner
+	}
 	return out.Body, nil
+}
+
+// Owned tells whether the object of the digest exists and belongs to the registry image.
+func (s *Store) Owned(ctx context.Context, digest, registry, imageID string) (bool, error) {
+	key, err := s.Key(digest)
+	if err != nil {
+		return false, err
+	}
+	out, err := s.api.HeadObjectWithContext(ctx, &s3.HeadObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)})
+	if err != nil {
+		if isNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("SBOM head failed: %w", err)
+	}
+	return ownedBy(out.Metadata, registry, imageID), nil
 }
 
 func (s *Store) Delete(ctx context.Context, digest string) error {

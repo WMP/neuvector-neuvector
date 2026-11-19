@@ -77,8 +77,10 @@ func sbomHeaders(w http.ResponseWriter, format string) {
 	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 }
 
-// sbomFromS3 sends the stored full CycloneDX document of a registry image. It returns false when the caller must build the document.
-func sbomFromS3(w http.ResponseWriter, r *http.Request, digest string, meta sbom.Meta) bool {
+// sbomFromS3 sends the stored full CycloneDX document of the registry image sum (access already checked).
+// It returns false when the caller must build the document.
+func sbomFromS3(w http.ResponseWriter, r *http.Request, sum *share.CLUSRegistryImageSummary, meta sbom.Meta) bool {
+	digest := sum.Digest
 	st := s3store.Current()
 	if st == nil || !s3store.ValidDigest(digest) {
 		return false
@@ -92,9 +94,9 @@ func sbomFromS3(w http.ResponseWriter, r *http.Request, digest string, meta sbom
 		log.WithFields(log.Fields{"digest": digest}).Warn("Too many SBOM downloads from S3")
 		return false
 	}
-	rc, err := st.Open(ctx, digest)
+	rc, err := st.Open(ctx, digest, sum.RegName, sum.ImageID)
 	if err != nil {
-		if errors.Is(err, s3store.ErrNotFound) {
+		if errors.Is(err, s3store.ErrNotFound) || errors.Is(err, s3store.ErrNotOwner) {
 			log.WithFields(log.Fields{"digest": digest}).Debug("SBOM not in S3")
 		} else {
 			log.WithFields(log.Fields{"digest": digest, "error": err}).Warn("Failed to read SBOM from S3")
@@ -192,7 +194,7 @@ func sbomWorkload(w http.ResponseWriter, r *http.Request, acc *access.AccessCont
 		if sum.Digest != "" {
 			meta.Digest = sum.Digest
 		}
-		if format == sbom.FormatCycloneDX && sbomFromS3(w, r, sum.Digest, meta) {
+		if format == sbom.FormatCycloneDX && sbomFromS3(w, r, sum, meta) {
 			return
 		}
 		sbomRespond(w, format, meta, imgModules, sum.BaseOS, nil)
@@ -299,7 +301,7 @@ func handlerRegistryImageSBOM(w http.ResponseWriter, r *http.Request, ps httprou
 		}
 	}
 	meta := sbom.Meta{Source: sbom.SourceImage, Name: name, ID: id, Digest: sum.Digest}
-	if format == sbom.FormatCycloneDX && sbomFromS3(w, r, sum.Digest, meta) {
+	if format == sbom.FormatCycloneDX && sbomFromS3(w, r, sum, meta) {
 		return
 	}
 	sbomRespond(w, format, meta, modules, sum.BaseOS, nil)

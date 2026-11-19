@@ -40,18 +40,36 @@ func TestRoundtrip(t *testing.T) {
 	s := newStore(t, srv)
 	ctx := context.Background()
 
-	_, err := s.Open(ctx, dg1)
+	_, err := s.Open(ctx, dg1, "reg/1", "img1")
 	require.True(t, errors.Is(err, ErrNotFound))
+	ok, err := s.Owned(ctx, dg1, "reg/1", "img1")
+	require.NoError(t, err)
+	require.False(t, ok)
 
-	require.NoError(t, s.Put(ctx, dg1, []byte("gzdata")))
-	require.NoError(t, s.Put(ctx, dg1, []byte("gzdata2"))) // overwrite
+	require.NoError(t, s.Put(ctx, dg1, "reg/1", "img1", []byte("gzdata")))
+	require.NoError(t, s.Put(ctx, dg1, "reg/1", "img1", []byte("gzdata2"))) // overwrite
 	require.Equal(t, map[string][]byte{"pre/c1/images/" + dg1 + ".cdx.json.gz": []byte("gzdata2")}, srv.Objects())
 
-	rc, err := s.Open(ctx, dg1)
+	rc, err := s.Open(ctx, dg1, "reg/1", "img1")
 	require.NoError(t, err)
 	b, _ := io.ReadAll(rc)
 	rc.Close()
 	require.Equal(t, "gzdata2", string(b))
+	ok, err = s.Owned(ctx, dg1, "reg/1", "img1")
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	// the same digest claimed by another registry image: never served to it, and the owner changes on overwrite
+	for _, o := range [][2]string{{"reg2", "img1"}, {"reg/1", "img2"}, {"reg", "1/img1"}} {
+		_, err = s.Open(ctx, dg1, o[0], o[1])
+		require.True(t, errors.Is(err, ErrNotOwner), o)
+		ok, err = s.Owned(ctx, dg1, o[0], o[1])
+		require.NoError(t, err)
+		require.False(t, ok, o)
+	}
+	require.NoError(t, s.Put(ctx, dg1, "reg2", "img9", []byte("other")))
+	_, err = s.Open(ctx, dg1, "reg/1", "img1")
+	require.True(t, errors.Is(err, ErrNotOwner))
 
 	require.NoError(t, s.Delete(ctx, dg1))
 	require.Empty(t, srv.Objects())
@@ -191,7 +209,7 @@ func TestFailureAndSecret(t *testing.T) {
 	s, err := New(testCfg(wrap.URL), "c1", http.DefaultClient)
 	require.NoError(t, err)
 	ctx := context.Background()
-	require.NoError(t, s.Put(ctx, dg1, []byte("data")))
+	require.NoError(t, s.Put(ctx, dg1, "r", "i", []byte("data")))
 	mu.Lock()
 	all := strings.Join(seen, "\n")
 	mu.Unlock()
@@ -199,7 +217,7 @@ func TestFailureAndSecret(t *testing.T) {
 	require.Contains(t, all, "Credential=AKIDTEST/")
 
 	srv.SetFail(true)
-	err = s.Put(ctx, dg2, []byte("data"))
+	err = s.Put(ctx, dg2, "r", "i", []byte("data"))
 	require.Error(t, err)
 	require.NotContains(t, err.Error(), secret)
 	require.Greater(t, srv.Requests(), 1)

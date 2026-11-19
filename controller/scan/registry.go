@@ -1943,7 +1943,7 @@ func (t *regScanTask) Handler(scanner string) scheduler.Action {
 		}
 
 		regScher.TaskDone(t, retAction)
-		upload := takeFullSBOM(result, sum.Digest)
+		upload := takeFullSBOM(result, t.reg.config.Name, id, sum.Digest)
 
 		smd.scanLog.WithFields(log.Fields{"scanTypesRequested": result.ScanTypesRequested}).Debug("scan types requested")
 		if left := t.reg.checkAndPutImageResult(t.sctx, id, result, retAction); left < 0 {

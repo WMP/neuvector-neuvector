@@ -20,12 +20,13 @@ type Server struct {
 	mu       sync.Mutex
 	objs     map[string][]byte
 	mod      map[string]time.Time
+	meta     map[string]http.Header // x-amz-meta-* headers of each object
 	fail     bool
 	requests int
 }
 
 func New() *Server {
-	s := &Server{objs: map[string][]byte{}, mod: map[string]time.Time{}}
+	s := &Server{objs: map[string][]byte{}, mod: map[string]time.Time{}, meta: map[string]http.Header{}}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.handle))
 	return s
 }
@@ -44,7 +45,7 @@ func (s *Server) Put(key string, b []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.objs[key] = append([]byte(nil), b...)
-	s.mod[key] = time.Now().UTC()
+	s.mod[key] = time.Now().UTC() // metadata of an existing object is kept
 }
 
 func (s *Server) SetFail(on bool) {
@@ -106,6 +107,12 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPut:
 		s.objs[key] = body
 		s.mod[key] = time.Now().UTC()
+		s.meta[key] = http.Header{}
+		for k, v := range r.Header {
+			if strings.HasPrefix(k, "X-Amz-Meta-") {
+				s.meta[key][k] = v
+			}
+		}
 		w.Header().Set("ETag", `"fake"`)
 	case r.Method == http.MethodGet || r.Method == http.MethodHead:
 		b, ok := s.objs[key]
@@ -117,6 +124,9 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
+		for k, v := range s.meta[key] {
+			w.Header()[k] = v
+		}
 		w.Header().Set("Content-Length", strconv.Itoa(len(b)))
 		w.Header().Set("Last-Modified", s.mod[key].Format(http.TimeFormat))
 		if r.Method == http.MethodGet {
@@ -127,6 +137,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodDelete:
 		delete(s.objs, key)
 		delete(s.mod, key)
+		delete(s.meta, key)
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		writeErr(w, http.StatusMethodNotAllowed, "MethodNotAllowed")

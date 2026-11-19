@@ -9659,7 +9659,7 @@ definitions:
         type: string
       prefix:
         type: string
-        description: Objects are stored as <prefix>/<cluster name>/images/<digest>.cdx.json.gz. Use a unique prefix per cluster when clusters share a bucket. After a cluster rename (also at federation join) the old objects are no longer used or deleted.
+        description: Objects are stored as <prefix>/<cluster name>/images/<digest>.cdx.json.gz. Use a unique prefix per cluster when clusters share a bucket. After a cluster rename (also at federation join) the old objects are no longer used or deleted. An object is served only to the registry image whose scan wrote it; when two registries have the same digest, the last scan wins and the other image gets the inventory document.
       path_style:
         type: boolean
       access_key:

@@ -17,7 +17,7 @@ const sbomUploadWait = 2 * time.Minute
 // takeFullSBOM drops the full SBOM from a registry scan result, so it never reaches the cluster store,
 // and returns its upload, or nil. digest is the registry summary digest: REST and the cleanup look it up.
 // S3 errors never fail a scan.
-func takeFullSBOM(result *share.ScanResult, digest string) func() {
+func takeFullSBOM(result *share.ScanResult, registry, imageID, digest string) func() {
 	data, format := result.FullSBOM, result.FullSBOMFormat
 	result.FullSBOM, result.FullSBOMFormat = nil, ""
 	if len(data) == 0 || result.Error != share.ScanErrorCode_ScanErrNone || digest == "" {
@@ -52,7 +52,7 @@ func takeFullSBOM(result *share.ScanResult, digest string) func() {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		if err := st.Put(ctx, digest, data); err != nil {
+		if err := st.Put(ctx, digest, registry, imageID, data); err != nil {
 			log.WithFields(log.Fields{"digest": digest, "error": err}).Warn("sbom s3: upload failed")
 			return
 		}

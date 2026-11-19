@@ -181,6 +181,14 @@ func handlerSBOMStorageImages(w http.ResponseWriter, r *http.Request, ps httprou
 	}
 
 	for _, ref := range scanner.GetRegistryImagesByDigest(digests, acc) {
+		// another registry can claim the same digest: list only objects written by this registry image
+		if owned, err := st.Owned(ctx, ref.Digest, ref.Registry, ref.ImageID); err != nil {
+			log.WithFields(log.Fields{"error": err}).Warn("Failed to read SBOM object in S3")
+			restRespError(w, http.StatusInternalServerError, api.RESTErrFailReadCluster)
+			return
+		} else if !owned {
+			continue
+		}
 		o := byDigest[ref.Digest]
 		resp.Images = append(resp.Images, &api.RESTSBOMStorageImage{
 			Registry: ref.Registry, ImageID: ref.ImageID, Digest: ref.Digest, Images: ref.Images,

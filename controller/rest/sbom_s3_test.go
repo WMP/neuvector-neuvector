@@ -32,7 +32,7 @@ type sbomS3MockScan struct {
 func (m *sbomS3MockScan) GetRegistryImageModules(name, id string, acc *access.AccessControl) ([]*share.ScanModule, *share.CLUSRegistryImageSummary, error) {
 	modules, sum, err := m.sbomMockScan.GetRegistryImageModules(name, id, acc)
 	if sum != nil {
-		sum.Digest = s3TestDigest
+		sum.Digest, sum.RegName, sum.ImageID = s3TestDigest, "reg1", id // the only mock registry, also for "all"
 	}
 	return modules, sum, err
 }
@@ -77,7 +77,7 @@ func sbomS3Put(t *testing.T, doc string) {
 	if st == nil {
 		t.Fatal("store is disabled")
 	}
-	if err := st.Put(t.Context(), s3TestDigest, buf.Bytes()); err != nil {
+	if err := st.Put(t.Context(), s3TestDigest, "reg1", "img1", buf.Bytes()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -200,6 +200,16 @@ func TestSBOMStorageDownload(t *testing.T) {
 		}
 	}
 
+	// the same digest written by the scan of another registry image: never served (cross-tenant)
+	if err := s3store.Current().Put(t.Context(), s3TestDigest, "reg-other", "img1", []byte{0x1f, 0x8b}); err != nil {
+		t.Fatal(err)
+	}
+	w = sbomS3Call("GET", regURL, "", api.UserRoleAdmin, nil)
+	if w.Code != http.StatusOK || strings.Contains(w.Body.String(), "from-s3") || !strings.Contains(w.Body.String(), "registrymod") {
+		t.Errorf("other owner: status=%d body=%s", w.Code, w.Body.String())
+	}
+	sbomS3Put(t, s3TestDoc)
+
 	// the workload endpoint and SPDX always use the inventory
 	w = sbomS3Call("GET", "/v1/scan/workload/wl1/sbom", "", api.UserRoleAdmin, nil)
 	if w.Code != http.StatusOK || strings.Contains(w.Body.String(), "from-s3") {
@@ -259,6 +269,15 @@ func TestSBOMStorageImages(t *testing.T) {
 	}
 	if c := sbomS3Call("GET", "/v1/sbom/s3/images", "", "sbom-no-perm", nil).Code; c != http.StatusForbidden {
 		t.Errorf("no sbom: status=%d, want 403", c)
+	}
+
+	// the object of the digest belongs to another registry image: not listed
+	if err := s3store.Current().Put(t.Context(), s3TestDigest, "reg-other", "img9", []byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	w = sbomS3Call("GET", "/v1/sbom/s3/images", "", api.UserRoleAdmin, nil)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"images":[]`) {
+		t.Errorf("other owner: status=%d body=%s", w.Code, w.Body.String())
 	}
 
 	srv.SetFail(true)
