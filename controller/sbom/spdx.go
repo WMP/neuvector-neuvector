@@ -27,6 +27,22 @@ func (r *licenseRefs) define(id, text string) {
 	r.infos = append(r.infos, &spdx.OtherLicense{LicenseIdentifier: id, ExtractedText: text, LicenseName: text})
 }
 
+// reserve defines the LicenseRef IDs used literally by any component, so that IDs
+// generated later for free text cannot take them.
+func (r *licenseRefs) reserve(comps []Component) {
+	for _, c := range comps {
+		for _, l := range c.Licenses {
+			if kind, norm := classifyLicense(l); kind != licenseText {
+				for _, ref := range licenseRefFind.FindAllString(norm, -1) {
+					if !r.used[ref] {
+						r.define(ref, ref) // no text is known for a bare LicenseRef
+					}
+				}
+			}
+		}
+	}
+}
+
 // declared returns the licenseDeclared value for a package.
 func (r *licenseRefs) declared(lics []string) string {
 	if len(lics) == 0 {
@@ -47,12 +63,6 @@ func (r *licenseRefs) declared(lics []string) string {
 				r.define(id, l)
 			}
 			norm = id
-		} else {
-			for _, ref := range licenseRefFind.FindAllString(norm, -1) {
-				if !r.used[ref] {
-					r.define(ref, ref) // no text is known for a bare LicenseRef
-				}
-			}
 		}
 		if kind == licenseExpr && len(lics) > 1 {
 			norm = "(" + norm + ")"
@@ -105,6 +115,7 @@ func writeSPDX(w io.Writer, meta Meta, comps []Component) error {
 	}
 
 	refs := &licenseRefs{ids: map[string]string{}, used: map[string]bool{}}
+	refs.reserve(comps)
 	for i, c := range comps {
 		p := &spdx.Package{
 			PackageName: c.Name, PackageSPDXIdentifier: common.ElementID("Package-" + strconv.Itoa(i+1)),

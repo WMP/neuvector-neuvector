@@ -1662,7 +1662,7 @@ func (m CacheMethod) GetScanModules(id string) ([]*share.ScanModule, string, err
 	defer scanMutexRUnlock()
 
 	info, ok := scanMap[id]
-	if !ok {
+	if !ok || info.lastScanTime.IsZero() { // not scanned yet: no SBOM rather than an empty one
 		return nil, "", common.ErrObjectNotFound
 	}
 	_, modules, err := db.GetVulnerabilityModule(id)

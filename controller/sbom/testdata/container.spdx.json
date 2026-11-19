@@ -132,6 +132,11 @@
   ],
   "hasExtractedLicensingInfos": [
     {
+      "licenseId": "LicenseRef-Vendor.1",
+      "extractedText": "LicenseRef-Vendor.1",
+      "name": "LicenseRef-Vendor.1"
+    },
+    {
       "licenseId": "LicenseRef-BSD",
       "extractedText": "BSD",
       "name": "BSD"
@@ -145,11 +150,6 @@
       "licenseId": "LicenseRef-GPL-v2-2",
       "extractedText": "GPL-v2",
       "name": "GPL-v2"
-    },
-    {
-      "licenseId": "LicenseRef-Vendor.1",
-      "extractedText": "LicenseRef-Vendor.1",
-      "name": "LicenseRef-Vendor.1"
     }
   ],
   "relationships": [

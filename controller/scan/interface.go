@@ -687,6 +687,9 @@ func (m *scanMethod) GetRegistryImageModules(name, id string, acc *access.Access
 				if err != nil {
 					return nil, nil, err
 				}
+				if sum.ScannedAt.IsZero() { // not scanned yet: no SBOM rather than an empty one
+					return nil, nil, common.ErrObjectNotFound
+				}
 				_, modules, err := db.GetVulnerabilityModule(id)
 				if err != nil {
 					return nil, nil, err

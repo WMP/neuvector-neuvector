@@ -99,7 +99,10 @@ func sbomWorkload(w http.ResponseWriter, acc *access.AccessControl, login *login
 			name = wl.Name
 		}
 	}
-	meta := sbom.Meta{Source: source, Name: name, ID: id, Domain: wl.Domain, Digest: wl.ImageDigest}
+	meta := sbom.Meta{Source: source, Name: name, ID: id, Digest: wl.ImageDigest}
+	if source == sbom.SourceContainer { // an image can run in several namespaces
+		meta.Domain = wl.Domain
+	}
 	sbomRespond(w, format, meta, modules, baseOS, imageScanModules(wl.ImageID))
 }
 
@@ -126,9 +129,9 @@ func handlerScanImageSBOM(w http.ResponseWriter, r *http.Request, ps httprouter.
 	id := ps.ByName("id")
 	var brief *api.RESTWorkloadBrief
 	for _, wl := range cacher.GetAllWorkloadsBrief("", acc) {
-		if wl.ImageID == id && wl.ScanSummary != nil && wl.ScanSummary.Status == api.ScanStatusFinished {
+		// lowest workload ID: the same request always gives the same document
+		if wl.ImageID == id && wl.ScanSummary != nil && wl.ScanSummary.Status == api.ScanStatusFinished && (brief == nil || wl.ID < brief.ID) {
 			brief = wl
-			break
 		}
 	}
 	if brief == nil {

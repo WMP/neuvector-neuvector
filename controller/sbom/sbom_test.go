@@ -58,7 +58,9 @@ func TestComponents(t *testing.T) {
 		{"openssl with empty-source OS module", []*share.ScanModule{mod("", "openssl", "3.0"), mod("openssl", "openssl", "3.0.1")}, nil,
 			[]string{"openssl@3.0"}},
 		{"opensslxx", []*share.ScanModule{mod(deb, "opensslxx", "3.0"), mod("openssl", "openssl", "3.0.1")}, nil,
-			[]string{"opensslxx@3.0"}},
+			[]string{"openssl@3.0"}},
+		{"deb upstream/binary", []*share.ScanModule{mod(deb, "openssl/libssl3", "3.0"), mod("openssl", "openssl", "3.0.1"), mod(deb, "glibc/libc6", "2.36")}, nil,
+			[]string{"libc6@2.36", "libssl3@3.0"}},
 		{"busybox", []*share.ScanModule{mod("busybox", "busybox", "1.36"), mod("alpine:3.18", "busybox", "1.36")}, nil,
 			[]string{"busybox@1.36"}},
 		{"exact duplicates", []*share.ScanModule{mod(deb, "bash", "5.2", "GPL-3.0-or-later"), mod(deb, "bash", "5.2", "MIT", "GPL-3.0-or-later")}, nil,
@@ -116,6 +118,9 @@ func TestClassifyLicense(t *testing.T) {
 		{"MIT AND Foo", licenseText, "MIT AND Foo"},
 		{"MIT GPL-2.0-only", licenseText, "MIT GPL-2.0-only"},
 		{"  MIT  ", licenseID, "MIT"},
+		{"apache-2.0+", licenseExpr, "Apache-2.0+"},
+		{"(MIT)", licenseExpr, "(MIT)"},
+		{"Foo+", licenseText, "Foo+"},
 	}
 	for _, tc := range tests {
 		kind, norm := classifyLicense(tc.in)
@@ -135,6 +140,17 @@ func TestSPDXLicenseRefs(t *testing.T) {
 	}
 	if got := r.declared([]string{"GPL v2"}); got != "LicenseRef-GPL-v2" || len(r.infos) != 2 {
 		t.Errorf("same text must reuse its ID: %q, %d infos", got, len(r.infos))
+	}
+
+	// a literal LicenseRef in a later component keeps its ID; free text gets another one
+	r = &licenseRefs{ids: map[string]string{}, used: map[string]bool{}}
+	comps := []Component{{Licenses: []string{"Foo Bar"}}, {Licenses: []string{"LicenseRef-Foo-Bar"}}}
+	r.reserve(comps)
+	if got := r.declared(comps[0].Licenses); got != "LicenseRef-Foo-Bar-2" {
+		t.Errorf("free text after reserve: %q", got)
+	}
+	if got := r.declared(comps[1].Licenses); got != "LicenseRef-Foo-Bar" {
+		t.Errorf("literal ref: %q", got)
 	}
 }
 

@@ -65,7 +65,9 @@ func Components(modules []*share.ScanModule, namespace string, image []*share.Sc
 	osNames := map[string]bool{}
 	for _, m := range modules {
 		if isOSModule(m) {
-			osNames[osPackageName(m.Name)] = true
+			upstream, bin, _ := strings.Cut(m.Name, "/") // deb "upstream/binary"
+			osNames[osPackageName(upstream)] = true
+			osNames[osPackageName(bin)] = true
 		}
 	}
 
@@ -87,7 +89,7 @@ func Components(modules []*share.ScanModule, namespace string, image []*share.Sc
 		}
 		c := byKey[mkKey(m)]
 		if c == nil {
-			c = &Component{Name: stripEcosystem(m.Name), Version: m.Version, Purl: scanUtils.ModulePurl(m, namespace)}
+			c = &Component{Name: componentName(m), Version: m.Version, Purl: scanUtils.ModulePurl(m, namespace)}
 			if image != nil {
 				lic, found := imageLicenses[mkKey(m)]
 				c.Runtime = !found
@@ -119,6 +121,18 @@ func Components(modules []*share.ScanModule, namespace string, image []*share.Sc
 
 func isOSModule(m *share.ScanModule) bool {
 	return m.Source == "" || strings.Contains(m.Source, ":")
+}
+
+// componentName matches the name in the purl (scanUtils.ModulePurl): OS packages use the
+// binary name of "upstream/binary" and "openssl" for "opensslxx"; applications lose the NeuVector prefix.
+func componentName(m *share.ScanModule) string {
+	if isOSModule(m) {
+		if _, bin, ok := strings.Cut(m.Name, "/"); ok && bin != "" {
+			return bin
+		}
+		return osPackageName(m.Name)
+	}
+	return stripEcosystem(m.Name)
 }
 
 func osPackageName(name string) string {

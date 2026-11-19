@@ -86,7 +86,7 @@ func classifyLicense(l string) (licenseKind, string) {
 		}
 		b.WriteString(t)
 	}
-	if wantOperand || depth != 0 || len(toks) < 2 {
+	if wantOperand || depth != 0 {
 		return licenseText, l
 	}
 	return licenseExpr, b.String()
