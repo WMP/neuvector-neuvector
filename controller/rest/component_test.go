@@ -90,6 +90,7 @@ func (m *componentMockScan) GetRegistryImageSummary(name string, vpf scanUtils.V
 	return []*api.RESTRegistryImageSummary{
 		{ImageID: id, Digest: "sha256:" + id, Repository: "lib/app", Tag: "2.0", Domain: componentRegistries[name]},
 		{ImageID: id, Digest: "sha256:" + id, Repository: "lib/app", Tag: "1.0", Domain: componentRegistries[name]},
+		{ImageID: id, Digest: "sha256:" + id, Repository: "other/secret", Tag: "1", Domain: "ns3"}, // tag from another namespace
 	}
 }
 
@@ -153,7 +154,7 @@ func TestComponentAdmin(t *testing.T) {
 	if len(d.Hosts) != 1 || d.Hosts[0].Name != "host1" {
 		t.Errorf("hosts: %+v", d.Hosts)
 	}
-	if len(d.Images) != 2 || d.Images[0].Registry != "reg1" || strings.Join(d.Images[0].Images, ",") != "lib/app:1.0,lib/app:2.0" || d.Images[0].Domain != "ns1" {
+	if len(d.Images) != 2 || d.Images[0].Registry != "reg1" || strings.Join(d.Images[0].Images, ",") != "lib/app:1.0,lib/app:2.0,other/secret:1" || d.Images[0].Domain != "ns1" {
 		t.Errorf("images: %+v", d.Images)
 	}
 	if len(d.RunningImages) != 2 || d.RunningImages[0].ImageID != "img1" || d.RunningImages[0].Workloads != 2 || len(d.RunningImages[0].Components) != 1 {
@@ -175,7 +176,7 @@ func TestComponentNamespaceUser(t *testing.T) {
 	if len(d.Hosts) != 0 {
 		t.Errorf("a namespace user must not see hosts: %+v", d.Hosts)
 	}
-	if len(d.Images) != 1 || d.Images[0].Registry != "reg1" {
+	if len(d.Images) != 1 || d.Images[0].Registry != "reg1" || strings.Join(d.Images[0].Images, ",") != "lib/app:1.0,lib/app:2.0" {
 		t.Errorf("images: %+v", d.Images)
 	}
 }

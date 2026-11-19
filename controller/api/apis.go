@@ -3639,7 +3639,8 @@ type RESTComponent struct {
 
 type RESTComponentWorkload struct {
 	ID         string          `json:"id"`
-	Name       string          `json:"name"`
+	Name       string          `json:"name"`      // pod name
+	Container  string          `json:"container"` // container name
 	Domain     string          `json:"domain"`
 	Image      string          `json:"image"`
 	ImageID    string          `json:"image_id"`

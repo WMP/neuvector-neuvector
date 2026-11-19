@@ -130,6 +130,10 @@ func searchComponentRegistryImages(r *http.Request, q *componentQuery, acc *acce
 	for _, name := range names {
 		byID := map[string]*api.RESTComponentRegistryImage{}
 		for _, row := range scanner.GetRegistryImageSummary(name, nil, acc) {
+			// an image summary is visible when one of its domains is; hide the tags of the other domains
+			if row.Domain != "" && !acc.Authorize(&share.CLUSWorkload{Domain: row.Domain}, nil) {
+				continue
+			}
 			img := byID[row.ImageID]
 			if img == nil {
 				img = &api.RESTComponentRegistryImage{Registry: name, ImageID: row.ImageID, Digest: row.Digest, Images: []string{}}
@@ -217,12 +221,15 @@ func handlerScanComponent(w http.ResponseWriter, r *http.Request, ps httprouter.
 			name = wl.Name
 		}
 		resp.Workloads = append(resp.Workloads, &api.RESTComponentWorkload{
-			ID: wl.ID, Name: name, Domain: wl.Domain, Image: wl.Image, ImageID: wl.ImageID, Components: comps})
+			ID: wl.ID, Name: name, Container: wl.DisplayName, Domain: wl.Domain, Image: wl.Image, ImageID: wl.ImageID, Components: comps})
 		if wl.ImageID != "" {
 			ri := running[wl.ImageID]
 			if ri == nil {
 				ri = &api.RESTComponentRunningImage{ImageID: wl.ImageID, Image: wl.Image}
 				running[wl.ImageID] = ri
+			}
+			if wl.Image < ri.Image { // the cache order is random: give a stable name
+				ri.Image = wl.Image
 			}
 			ri.Workloads++
 			ri.Components = addComponents(ri.Components, comps)
@@ -252,7 +259,7 @@ func handlerScanComponent(w http.ResponseWriter, r *http.Request, ps httprouter.
 	}
 
 	slices.SortFunc(resp.Workloads, func(a, b *api.RESTComponentWorkload) int {
-		return strings.Compare(a.Domain+"\x00"+a.Name+"\x00"+a.ID, b.Domain+"\x00"+b.Name+"\x00"+b.ID)
+		return strings.Compare(a.Domain+"\x00"+a.Name+"\x00"+a.Container+"\x00"+a.ID, b.Domain+"\x00"+b.Name+"\x00"+b.Container+"\x00"+b.ID)
 	})
 	slices.SortFunc(resp.Hosts, func(a, b *api.RESTComponentHost) int { return strings.Compare(a.Name, b.Name) })
 	slices.SortFunc(resp.RunningImages, func(a, b *api.RESTComponentRunningImage) int {

@@ -1022,8 +1022,9 @@ func TestModulesCriterionRange(t *testing.T) {
 }
 
 func TestValidateModulesCriterionValue(t *testing.T) {
-	valid := []string{"vim", "vim=1.0", "vim=1.*", "vim>1.0", "vim<=1.0", " log4j-core>=2.0.0<2.17.1 ", "a>1<2>0.5"}
-	invalid := []string{"log4j<1.0 x", "log4j<", "log4j<2.0>", "<1.0", "log4j>=", "log4j>=2.0.0<", "log4j>=2.0.0<1.0 x", " >1.0"}
+	// single-bound values are not checked, as before (old rules must still import)
+	valid := []string{"vim", "vim=1.0", "vim=1.*", "vim>1.0", "vim<=1.0", "log4j<1.0 x", "log4j<", "<1.0", " log4j-core>=2.0.0<2.17.1 ", "a>1<2>0.5"}
+	invalid := []string{"log4j<2.0>", "log4j>=2.0.0<", "log4j>=2.0.0<1.0 x", "<1.0<2.0", "log4j>=1.0<2.0<"}
 	for _, v := range valid {
 		if err := ValidateModulesCriterionValue(v); err != nil {
 			t.Errorf("%q should be valid: %v", v, err)

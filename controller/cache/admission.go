@@ -1036,29 +1036,21 @@ var modulesRangeRegexp = regexp.MustCompile(`^([^<>=]+?)\s*((?:(?:<=|>=|<|>)\s*[
 var modulesBoundRegexp = regexp.MustCompile(`(<=|>=|<|>)\s*([^<>=\s]+)`)
 
 // ValidateModulesCriterionValue checks one comma-separated entry of a modules criterion value.
-// Only entries with a version comparison (<, >, <=, >=) are checked; "=" and plain names are not.
+// Only the range form (two or more < or > bounds) is checked: single-bound values saved by
+// older versions must still load from CRDs and config imports.
 func ValidateModulesCriterionValue(value string) error {
 	value = strings.TrimSpace(value)
-	if !strings.ContainsAny(value, "<>") {
+	if strings.Count(value, "<")+strings.Count(value, ">") < 2 {
 		return nil
 	}
-	if m := modulesRangeRegexp.FindStringSubmatch(value); m != nil {
-		for _, b := range modulesBoundRegexp.FindAllStringSubmatch(m[2], -1) {
-			if _, err := utils.NewVersion(b[2]); err != nil {
-				return fmt.Errorf("invalid version %q in modules criterion value %q", b[2], value)
-			}
+	m := modulesRangeRegexp.FindStringSubmatch(value)
+	if m == nil {
+		return fmt.Errorf("invalid version range in modules criterion value %q", value)
+	}
+	for _, b := range modulesBoundRegexp.FindAllStringSubmatch(m[2], -1) {
+		if _, err := utils.NewVersion(b[2]); err != nil {
+			return fmt.Errorf("invalid version %q in modules criterion value %q", b[2], value)
 		}
-		return nil
-	}
-	operator, idx := getCrtValOperator(value, []string{"=", ">", "<", ">=", "<="})
-	if operator == "=" {
-		return nil
-	}
-	if idx < 0 || strings.TrimSpace(value[:idx]) == "" {
-		return fmt.Errorf("missing module name in modules criterion value %q", value)
-	}
-	if _, err := utils.NewVersion(value[idx+len(operator):]); err != nil {
-		return fmt.Errorf("invalid version in modules criterion value %q", value)
 	}
 	return nil
 }
