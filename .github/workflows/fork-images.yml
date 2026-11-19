@@ -1,0 +1,44 @@
+name: Fork test images
+# Fork only: builds linux/amd64 test images to ghcr.io. Remove this commit before a PR to upstream.
+on:
+  push:
+    branches-ignore: [main, master]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    # Never run in the upstream repository.
+    if: github.repository_owner != 'neuvector'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [controller, enforcer]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build and push
+        env:
+          COMPONENT: ${{ matrix.component }}
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          # Docker tag: [A-Za-z0-9_.-], max 128 chars.
+          tag="$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9_.-' '-' | cut -c1-120 | sed 's/^[.-]/_/')-${short_sha}"
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/neuvector-${COMPONENT}:${tag}"
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          # "interim/" prefix: controller treats other values as a release version (controller/controller.go:932).
+          docker build -f "package/Dockerfile.${COMPONENT}" \
+            --build-arg VERSION="interim/${tag}" --build-arg COMMIT="$short_sha" \
+            -t "$image" .
+          docker push "$image"
+          echo "Pushed \`$image\`" >> "$GITHUB_STEP_SUMMARY"
