@@ -71,15 +71,23 @@ func Components(modules []*share.ScanModule, namespace string, image []*share.Sc
 		}
 	}
 
+	// Modules match by Source+Name+Version, or by the full purl (the scanner sets the same purl
+	// on e.g. the pom.properties and MANIFEST.MF modules of one jar, or one npm package in 2 directories).
+	// The full purl keeps qualifiers such as the rpm epoch, so different packages never merge.
 	type key struct{ source, name, version string }
 	mkKey := func(m *share.ScanModule) key { return key{m.Source, m.Name, m.Version} }
 	imageLicenses := map[key][]string{}
+	imagePurls := map[string][]string{}
 	for _, m := range image {
 		imageLicenses[mkKey(m)] = append(imageLicenses[mkKey(m)], m.Licenses...)
+		if p := scanUtils.ModulePurl(m, namespace); p != "" {
+			imagePurls[p] = append(imagePurls[p], m.Licenses...)
+		}
 	}
 
 	var comps []*Component
 	byKey := map[key]*Component{}
+	byPurl := map[string]*Component{}
 	for _, m := range modules {
 		switch m.Source {
 		case "nginx", "openssl", "busybox":
@@ -87,21 +95,37 @@ func Components(modules []*share.ScanModule, namespace string, image []*share.Sc
 				continue
 			}
 		}
-		c := byKey[mkKey(m)]
-		if c == nil {
-			c = &Component{Name: componentName(m), Version: m.Version, Purl: scanUtils.ModulePurl(m, namespace)}
-			if image != nil {
-				lic, found := imageLicenses[mkKey(m)]
-				c.Runtime = !found
-				c.Licenses = append(c.Licenses, lic...)
+		purl := scanUtils.ModulePurl(m, namespace)
+		c := byPurl[purl]
+		if c == nil || purl == "" {
+			if c = byKey[mkKey(m)]; c != nil && c.Purl != "" && purl != "" && c.Purl != purl {
+				c = nil // same NeuVector name, different package
 			}
-			byKey[mkKey(m)] = c
+		}
+		runtime := false
+		var imageLic []string
+		if image != nil {
+			lic, found := imageLicenses[mkKey(m)]
+			plic, pfound := imagePurls[purl]
+			runtime = !found && !(purl != "" && pfound)
+			imageLic = append(append(imageLic, lic...), plic...)
+		}
+		if c == nil {
+			c = &Component{Name: componentName(m), Version: m.Version, Purl: purl, Runtime: runtime}
 			comps = append(comps, c)
 		}
-		if c.Purl == "" { // a duplicate can carry the purl the first module lacks
-			c.Purl = scanUtils.ModulePurl(m, namespace)
+		c.Runtime = c.Runtime && runtime // in the image when any merged module is
+		if c.Purl == "" {
+			c.Purl = purl
 		}
-		c.Licenses = append(c.Licenses, m.Licenses...)
+		if m.Source == "jar" && !isMavenName(c.Name) && isMavenName(m.Name) {
+			c.Name = m.Name // pom.properties groupId:artifactId rather than the MANIFEST.MF title
+		}
+		c.Licenses = append(append(c.Licenses, imageLic...), m.Licenses...)
+		byKey[mkKey(m)] = c
+		if c.Purl != "" {
+			byPurl[c.Purl] = c
+		}
 	}
 
 	out := make([]Component, len(comps))
@@ -120,6 +144,10 @@ func Components(modules []*share.ScanModule, namespace string, image []*share.Sc
 		return a.Purl < b.Purl
 	})
 	return out
+}
+
+func isMavenName(name string) bool {
+	return strings.Contains(name, ":") && !strings.Contains(name, " ")
 }
 
 func isOSModule(m *share.ScanModule) bool {

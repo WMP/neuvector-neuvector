@@ -201,6 +201,10 @@ func TestGolden(t *testing.T) {
 	syft := mod("jar", "org.apache.logging.log4j:log4j-core", "2.14.1", "Apache-2.0")
 	syft.Origin = "syft"
 	nginxApp := mod("nginx", "nginx", "1.22.1")
+	pom := mod("jar", "com.fasterxml.jackson.core:jackson-core", "2.15.2")
+	manifest := mod("jar", "Jackson-core", "2.15.2", "Apache-2.0") // same jar, MANIFEST.MF module
+	pom.Purl = "pkg:maven/com.fasterxml.jackson.core/jackson-core@2.15.2"
+	manifest.Purl = pom.Purl
 
 	runtimeModules := []*share.ScanModule{
 		mod(deb, "bash", "5.2.15-2", "GPL-3.0-or-later"),
@@ -211,6 +215,8 @@ func TestGolden(t *testing.T) {
 		mod("python", "python:requests", "2.31.0", "Apache-2.0 OR MIT", "GPL v2", "GPL-v2", "BSD", "LicenseRef-Vendor.1"),
 		mod("python", "python:requests", "2.31.0"),
 		syft,
+		manifest,
+		pom,
 	}
 	imageModules := []*share.ScanModule{
 		mod(deb, "bash", "5.2.15-2", "GPL-3.0-or-later"),
@@ -282,5 +288,49 @@ func TestCDXLicensesExpression(t *testing.T) {
 	}
 	if got := cdxLicenses([]string{"MIT", "Apache-2.0"}); got == nil || len(*got) != 2 || (*got)[0].License.ID != "MIT" {
 		t.Errorf("only IDs: %+v", got)
+	}
+}
+
+func TestMergeByPurl(t *testing.T) {
+	const log4j = "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1"
+	withPurl := func(m *share.ScanModule, purl string) *share.ScanModule { m.Purl = purl; return m }
+	manifest := func() *share.ScanModule {
+		return withPurl(mod("jar", "Apache Log4j Core", "2.14.1", "Apache-2.0"), log4j)
+	}
+	pom := func() *share.ScanModule {
+		return withPurl(mod("jar", "org.apache.logging.log4j:log4j-core", "2.14.1"), log4j)
+	}
+
+	// pom.properties and MANIFEST.MF of one jar, in both orders: one component with the pom name
+	for _, mods := range [][]*share.ScanModule{{manifest(), pom()}, {pom(), manifest()}} {
+		got := Components(mods, "", nil)
+		if len(got) != 1 || got[0].Name != "org.apache.logging.log4j:log4j-core" || got[0].Purl != log4j ||
+			len(got[0].Licenses) != 1 || got[0].Licenses[0] != "Apache-2.0" {
+			t.Errorf("pom + MANIFEST: %+v", got)
+		}
+	}
+
+	// one npm package in 2 directories (purl derived from Source/Name/Version, File differs)
+	a, b := mod("npm", "lodash", "4.17.21", "MIT"), mod("npm", "lodash", "4.17.21")
+	a.File, b.File = "/app/node_modules/lodash", "/usr/lib/node_modules/lodash"
+	if got := Components([]*share.ScanModule{a, b}, "", nil); len(got) != 1 || got[0].Purl != "pkg:npm/lodash@4.17.21" {
+		t.Errorf("npm in 2 directories: %+v", got)
+	}
+
+	// runtime only when no merged module is in the image; the image module matches by purl
+	img := []*share.ScanModule{withPurl(mod("jar", "x", "1", "MIT"), log4j)}
+	if got := Components([]*share.ScanModule{manifest(), pom()}, "", img); len(got) != 1 || got[0].Runtime ||
+		strings.Join(got[0].Licenses, ",") != "Apache-2.0,MIT" {
+		t.Errorf("in image by purl: %+v", got)
+	}
+	if got := Components([]*share.ScanModule{manifest(), pom()}, "", []*share.ScanModule{}); len(got) != 1 || !got[0].Runtime {
+		t.Errorf("not in image: %+v", got)
+	}
+
+	// different purls (rpm epoch qualifier) stay separate even with the same NeuVector name
+	r1, r2 := mod("centos:7", "bash", "4.2"), mod("centos:7", "bash", "4.2")
+	r1.Purl, r2.Purl = "pkg:rpm/centos/bash@4.2?epoch=1", "pkg:rpm/centos/bash@4.2?epoch=2"
+	if got := Components([]*share.ScanModule{r1, r2}, "", nil); len(got) != 2 {
+		t.Errorf("different purls: %+v", got)
 	}
 }

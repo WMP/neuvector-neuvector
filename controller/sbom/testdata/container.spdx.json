@@ -43,8 +43,26 @@
       ]
     },
     {
-      "name": "lodash",
+      "name": "com.fasterxml.jackson.core:jackson-core",
       "SPDXID": "SPDXRef-Package-2",
+      "versionInfo": "2.15.2",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "runtime: found in the running container only",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:maven/com.fasterxml.jackson.core/jackson-core@2.15.2"
+        }
+      ]
+    },
+    {
+      "name": "lodash",
+      "SPDXID": "SPDXRef-Package-3",
       "versionInfo": "4.17.21",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
@@ -62,7 +80,7 @@
     },
     {
       "name": "nginx",
-      "SPDXID": "SPDXRef-Package-3",
+      "SPDXID": "SPDXRef-Package-4",
       "versionInfo": "1.22.1",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
@@ -79,7 +97,7 @@
     },
     {
       "name": "openssl",
-      "SPDXID": "SPDXRef-Package-4",
+      "SPDXID": "SPDXRef-Package-5",
       "versionInfo": "3.0.11-1",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
@@ -96,7 +114,7 @@
     },
     {
       "name": "org.apache.logging.log4j:log4j-core",
-      "SPDXID": "SPDXRef-Package-5",
+      "SPDXID": "SPDXRef-Package-6",
       "versionInfo": "2.14.1",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
@@ -114,7 +132,7 @@
     },
     {
       "name": "requests",
-      "SPDXID": "SPDXRef-Package-6",
+      "SPDXID": "SPDXRef-Package-7",
       "versionInfo": "2.31.0",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
@@ -186,6 +204,11 @@
     {
       "spdxElementId": "SPDXRef-root",
       "relatedSpdxElement": "SPDXRef-Package-6",
+      "relationshipType": "CONTAINS"
+    },
+    {
+      "spdxElementId": "SPDXRef-root",
+      "relatedSpdxElement": "SPDXRef-Package-7",
       "relationshipType": "CONTAINS"
     }
   ]
