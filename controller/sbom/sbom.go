@@ -107,7 +107,7 @@ func Components(modules []*share.ScanModule, namespace string, image []*share.Sc
 		if image != nil {
 			lic, found := imageLicenses[mkKey(m)]
 			plic, pfound := imagePurls[purl]
-			runtime = !found && !(purl != "" && pfound)
+			runtime = !found && (purl == "" || !pfound)
 			imageLic = append(append(imageLic, lic...), plic...)
 		}
 		if c == nil {
