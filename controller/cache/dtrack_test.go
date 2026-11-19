@@ -361,7 +361,11 @@ func TestDtrackPreview(t *testing.T) {
 	if _, err = m.DtrackPreview("w1", cfg); !errors.Is(err, ErrDtrackPodUnknown) {
 		t.Errorf("unknown pod: err %v", err)
 	}
-	if _, err = m.DtrackPreview("nope", cfg); !errors.Is(err, ErrDtrackNotRunning) {
-		t.Errorf("unknown workload: err %v", err)
+	if _, err = m.DtrackPreview("nope", cfg); !errors.Is(err, ErrDtrackNotScanned) {
+		t.Errorf("not a scanned container: err %v", err)
+	}
+	wlCacheMap["w1"].workload.Running = false
+	if _, err = m.DtrackPreview("w1", cfg); !errors.Is(err, ErrDtrackNotRunning) {
+		t.Errorf("stopped workload: err %v", err)
 	}
 }

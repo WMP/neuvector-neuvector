@@ -3134,7 +3134,7 @@ paths:
       tags:
         - Scan
       summary: Preview the Dependency-Track project of a workload
-      description: Requires the sbom permission in the global scope and access to the workload. Nothing is uploaded. A template that is absent uses the stored configuration. A project that cannot be rendered gives status 200 and skipped_reason.
+      description: Requires the sbom permission in the global scope (it gives access to every workload, so the result can show any pod or namespace label used in a template). Nothing is uploaded. A template that is absent uses the stored configuration; an empty project_name or project_version uses the default. A project that cannot be rendered, or a workload that is not a scanned container, gives status 200 and skipped_reason.
       security:
         - ApiKeyAuth: []
         - TokenAuth: []

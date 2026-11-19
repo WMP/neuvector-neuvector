@@ -121,7 +121,10 @@ var ErrDtrackPodUnknown = errors.New("pod not known yet")
 // ErrDtrackNotRunning: the workload is gone or stopped.
 var ErrDtrackNotRunning = errors.New("workload is not running")
 
-// dtrackVars collects the template values of a workload. It returns nil, nil when the workload is gone or stopped.
+// ErrDtrackNotScanned: only scanned containers are uploaded (not pod parents, hosts or excluded containers).
+var ErrDtrackNotScanned = errors.New("workload is not a scanned container")
+
+// dtrackVars collects the template values of a workload. It returns nil, nil, nil when the workload is gone or stopped.
 func dtrackVars(id string) (*dtrack.Vars, *share.CLUSWorkload, error) {
 	cacheMutexRLock()
 	c := wlCacheMap[id]
@@ -162,6 +165,13 @@ func dtrackVars(id string) (*dtrack.Vars, *share.CLUSWorkload, error) {
 
 // DtrackPreview renders the project of a workload for the given configuration. It uploads nothing.
 func (m CacheMethod) DtrackPreview(id string, cfg share.CLUSDependencyTrack) (dtrack.Project, error) {
+	scanMutexRLock()
+	info, ok := scanMap[id]
+	scanned := ok && info.objType == share.ScanObjectType_CONTAINER
+	scanMutexRUnlock()
+	if !scanned {
+		return dtrack.Project{}, ErrDtrackNotScanned
+	}
 	v, _, err := dtrackVars(id)
 	if err != nil {
 		return dtrack.Project{}, err

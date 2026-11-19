@@ -244,7 +244,7 @@ func handlerDependencyTrackPreview(w http.ResponseWriter, r *http.Request, ps ht
 	case err == nil:
 		resp.ProjectName, resp.ProjectVersion = proj.Name, proj.Version
 		resp.Tags = append(resp.Tags, proj.Tags...)
-	case errors.Is(err, cache.ErrDtrackPodUnknown), errors.Is(err, cache.ErrDtrackNotRunning), errors.Is(err, dtrack.ErrEmptySymbol):
+	case errors.Is(err, cache.ErrDtrackPodUnknown), errors.Is(err, cache.ErrDtrackNotRunning), errors.Is(err, cache.ErrDtrackNotScanned), errors.Is(err, dtrack.ErrEmptySymbol):
 		resp.SkippedReason = err.Error()
 	default:
 		log.WithFields(log.Fields{"error": err}).Error("Failed to render the Dependency-Track project")
