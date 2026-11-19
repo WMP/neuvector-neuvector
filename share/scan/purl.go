@@ -168,8 +168,8 @@ func PurlMergeKey(purl string) string {
 	return c.typ + "/" + c.namespace + c.name + "@" + c.version
 }
 
-// ModulePurl returns m.Purl when set. Otherwise it derives the purl from Source, Name,
-// Version and File (reports from scanners without purl support). namespace is
+// ModulePurl returns m.Purl when set. Otherwise it derives the purl from Source, Name
+// and Version (reports from scanners without purl support). namespace is
 // ScanResult.Namespace (e.g. "debian:12"), used when m.Source is empty.
 // It returns "" when the module has no valid purl.
 func ModulePurl(m *share.ScanModule, namespace string) string {
@@ -221,6 +221,7 @@ func ModulePurl(m *share.ScanModule, namespace string) string {
 		return BuildPurl("gem", "", pre("ruby:"), ver, nil, "")
 	case "golang":
 		n := pre("go:")
+		ver, _, _ = strings.Cut(ver, " ")                           // "1.22.1 X:boringcrypto"
 		if strings.HasPrefix(n, ".") || strings.HasPrefix(n, "/") { // local replace path, not a module path
 			return ""
 		}
@@ -244,7 +245,7 @@ func ModulePurl(m *share.ScanModule, namespace string) string {
 		return BuildPurl("cran", "", n[strings.LastIndex(n, "-")+1:], ver, nil, "")
 	case "Wordpress":
 		return gen("wordpress")
-	case "nginx", "openssl": // app copies of OS packages, added only for CVE matching
+	case "nginx", "openssl", "kubernetes", "openshift": // app copies of OS packages for CVE matching; platform
 		return gen(src)
 	case "busybox":
 		return gen("busybox")

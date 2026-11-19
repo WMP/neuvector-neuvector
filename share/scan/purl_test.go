@@ -43,6 +43,9 @@ func TestPurlModule(t *testing.T) {
 		{"foo", "1", "r", "", "pkg:cran/foo@1"},
 		{"The Apache Software Foundation:commons-io", "2", "jar", "", ""},
 		{"go:../lib", "", "golang", "", ""},
+		{"go:stdlib", "1.22.1 X:boringcrypto", "golang", "", "pkg:golang/stdlib@1.22.1"},
+		{"kubernetes", "1.29.0", "kubernetes", "kubernetes", "pkg:generic/kubernetes@1.29.0"},
+		{"openshift.kubernetes", "4.14", "openshift", "kubernetes", "pkg:generic/openshift@4.14"},
 		{"redis", "7.2.4", "redis", "", "pkg:bitnami/redis@7.2.4"},
 	}
 	for _, c := range cases {
