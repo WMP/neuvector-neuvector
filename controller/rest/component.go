@@ -128,38 +128,43 @@ func searchComponentRegistryImages(r *http.Request, q *componentQuery, acc *acce
 
 	list := make([]*api.RESTComponentRegistryImage, 0)
 	for _, name := range names {
-		byID := map[string]*api.RESTComponentRegistryImage{}
+		var ids []string
 		for _, row := range scanner.GetRegistryImageSummary(name, nil, acc) {
-			// an image summary is visible when one of its domains is; hide the tags of the other domains
-			if row.Domain != "" && !acc.Authorize(&share.CLUSWorkload{Domain: row.Domain}, nil) {
-				continue
-			}
-			img := byID[row.ImageID]
-			if img == nil {
-				img = &api.RESTComponentRegistryImage{Registry: name, ImageID: row.ImageID, Digest: row.Digest, Images: []string{}}
-				byID[row.ImageID] = img
-			}
-			ref := row.Repository
-			if row.Tag != "" {
-				ref += ":" + row.Tag
-			}
-			img.Images = append(img.Images, ref)
-			if img.Domain == "" {
-				img.Domain = row.Domain
-			}
+			ids = append(ids, row.ImageID)
 		}
-		for id, img := range byID {
+		slices.Sort(ids)
+		for _, id := range slices.Compact(ids) {
 			if r.Context().Err() != nil {
 				return list
 			}
 			modules, sum, err := scanner.GetRegistryImageModules(name, id, acc)
 			if err != nil || sum == nil {
+				if err != nil && !errors.Is(err, common.ErrObjectNotFound) && !errors.Is(err, common.ErrObjectAccessDenied) {
+					log.WithFields(log.Fields{"registry": name, "id": id, "error": err}).Error("Failed to get scan modules")
+				}
 				continue
 			}
-			if img.Components = q.find(modules, sum.BaseOS); len(img.Components) > 0 {
-				slices.Sort(img.Images)
-				list = append(list, img)
+			comps := q.find(modules, sum.BaseOS)
+			if len(comps) == 0 {
+				continue
 			}
+			img := &api.RESTComponentRegistryImage{Registry: name, ImageID: id, Digest: sum.Digest, Images: []string{}, Components: comps}
+			for _, i := range sum.Images {
+				// the summary is visible when one of its domains is; hide the tags of the other domains
+				if i.Domain != "" && !acc.Authorize(&share.CLUSWorkload{Domain: i.Domain}, nil) {
+					continue
+				}
+				ref := i.Repo
+				if i.Tag != "" {
+					ref += ":" + i.Tag
+				}
+				img.Images = append(img.Images, ref)
+				if img.Domain == "" {
+					img.Domain = i.Domain
+				}
+			}
+			slices.Sort(img.Images)
+			list = append(list, img)
 		}
 	}
 	slices.SortFunc(list, func(a, b *api.RESTComponentRegistryImage) int {
@@ -186,7 +191,7 @@ func handlerScanComponent(w http.ResponseWriter, r *http.Request, ps httprouter.
 		return
 	}
 	if !componentSearchLock.TryLock() {
-		restRespErrorMessage(w, http.StatusTooManyRequests, api.RESTErrInvalidRequest, "Another component search is running")
+		restRespErrorMessage(w, http.StatusTooManyRequests, api.RESTErrOpNotAllowed, "Another component search is running")
 		return
 	}
 	defer componentSearchLock.Unlock()

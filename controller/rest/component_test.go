@@ -102,7 +102,10 @@ func (m *componentMockScan) GetRegistryImageModules(name, id string, acc *access
 	if !ok {
 		return nil, nil, common.ErrObjectNotFound
 	}
-	return mods, &share.CLUSRegistryImageSummary{BaseOS: "debian:12"}, nil
+	return mods, &share.CLUSRegistryImageSummary{BaseOS: "debian:12", Digest: "sha256:" + id, Images: []share.CLUSImage{
+		{Repo: "lib/app", Tag: "2.0"}, {Repo: "lib/app", Tag: "1.0", Domain: componentRegistries[name]},
+		{Repo: "other/secret", Tag: "1", Domain: "ns3"}, // tag from another namespace
+	}}, nil
 }
 
 func componentSetup(t *testing.T) {
