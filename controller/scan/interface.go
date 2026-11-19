@@ -567,9 +567,9 @@ func (m *scanMethod) getAllRegistryImageReport(id string, vpf scanUtils.VPFInter
 
 // resolveRegistry finds the registry by name; it does not handle common.RegistryAllName.
 func resolveRegistry(name string, acc *access.AccessControl) (*Registry, error) {
-	if name == common.RegistryRepoScanName {
+	if name == common.RegistryRepoScanName && repoScanRegistry != nil {
 		return repoScanRegistry, nil
-	} else if name == common.RegistryFedRepoScanName {
+	} else if name == common.RegistryFedRepoScanName && repoFedScanRegistry != nil {
 		return repoFedScanRegistry, nil
 	} else if rs, ok := regMapLookup(name); ok {
 		return rs, nil

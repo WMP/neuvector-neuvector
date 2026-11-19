@@ -83,11 +83,15 @@ func TestDependencyTrackRoundTripNoKeyLeak(t *testing.T) {
 		t.Errorf("key in GET response: %s", g.body)
 	}
 
-	// nil keeps the key, a failing request does not change it
-	if w = dtPatch(api.UserRoleAdmin, `{"url":"http://other:8080"}`); w.status != http.StatusOK {
+	// a new URL needs the key again, so a stored key never goes to another server
+	if w = dtPatch(api.UserRoleAdmin, `{"url":"http://other:8080"}`); w.status != http.StatusBadRequest {
+		t.Fatalf("URL change without key: status=%d, want 400", w.status)
+	}
+	// nil keeps the key
+	if w = dtPatch(api.UserRoleAdmin, `{"tags":[]}`); w.status != http.StatusOK {
 		t.Fatalf("PATCH status=%d", w.status)
 	}
-	if c = dtGet(t); !c.APIKeySet || c.URL != "http://other:8080" {
+	if c = dtGet(t); !c.APIKeySet || c.URL != "https://dt.example.com:8081" {
 		t.Errorf("key must be kept: %+v", c)
 	}
 	// reject (invalid) requests that carry the key

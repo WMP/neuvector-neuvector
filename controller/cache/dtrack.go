@@ -49,6 +49,7 @@ var (
 	dtrackMutex     sync.Mutex
 	dtrackUploader  *dtrack.Uploader
 	dtrackCancel    context.CancelFunc
+	dtrackCtx       context.Context           // done when the uploader is stopped
 	dtrackCfg       share.CLUSDependencyTrack // defaults applied
 	dtrackStartedAt time.Time
 	dtrackLastKey   *dtrackConfigKey
@@ -91,21 +92,26 @@ func dtrackConfigUpdate(cfg *share.CLUSSystemConfig) {
 	hc, err := httpclient.CreateHTTPClient(proxy)
 	if err != nil {
 		log.WithFields(log.Fields{"url": dt.URL, "error": err}).Warn("dtrack: cannot create HTTP client, uploader not started")
+		dtrackLastKey = nil // try again on the next system config update
 		return
 	}
 	u := dtrack.NewUploader(&dtrack.Client{URL: strings.TrimRight(dt.URL, "/"), APIKey: dt.APIKey, HTTP: hc})
 	ctx, cancel := context.WithCancel(context.Background())
 	go u.Run(ctx)
-	dtrackUploader, dtrackCancel = u, cancel
+	dtrackUploader, dtrackCancel, dtrackCtx = u, cancel, ctx
 	dtrackCfg, dtrackStartedAt = dtrack.WithDefaults(dt), time.Now()
 	log.WithFields(log.Fields{"enabled": true, "url": dt.URL}).Info("dtrack: uploader started")
 }
 
-func dtrackState() (*dtrack.Uploader, share.CLUSDependencyTrack, time.Time) {
+func dtrackState() (*dtrack.Uploader, share.CLUSDependencyTrack, time.Time, context.Context) {
 	dtrackMutex.Lock()
 	defer dtrackMutex.Unlock()
-	return dtrackUploader, dtrackCfg, dtrackStartedAt
+	return dtrackUploader, dtrackCfg, dtrackStartedAt, dtrackCtx
 }
+
+// errDtrackPodUnknown: the pod event has not arrived yet (or the pod is deleted). Without it, a pod
+// with an owner would look like a pod without owner and get a project of its own.
+var errDtrackPodUnknown = errors.New("pod not known yet")
 
 // dtrackItem builds the upload item of a workload. It returns nil, nil when the workload is gone.
 // The SBOM is built when the item is sent, so this does not read the database.
@@ -121,6 +127,10 @@ func dtrackItem(id string, cfg share.CLUSDependencyTrack) (*dtrack.Item, error) 
 	cluster := systemConfigCache.ClusterName
 	cacheMutexRUnlock()
 
+	digest := wl.ImageDigest
+	if digest == "" {
+		digest = wl.ImageID
+	}
 	v := dtrack.Vars{
 		Cluster:   cluster,
 		Namespace: wl.Domain,
@@ -128,13 +138,15 @@ func dtrackItem(id string, cfg share.CLUSDependencyTrack) (*dtrack.Item, error) 
 		Pod:       podName,
 		Container: wl.Labels[container.KubeKeyContainerName],
 		Image:     wl.Image,
-		Digest:    wl.ImageDigest,
+		Digest:    digest,
 	}
 	dtrackPodMutex.Lock()
-	if p, ok := dtrackPods[wl.Domain+"/"+podName]; ok {
-		v.ReplicaSet, v.PodLabels = p.ownerName, p.labels
-	}
+	p, ok := dtrackPods[wl.Domain+"/"+podName]
 	dtrackPodMutex.Unlock()
+	if !ok {
+		return nil, errDtrackPodUnknown
+	}
+	v.ReplicaSet, v.PodLabels = p.ownerName, p.labels
 	if d := getDomainData(wl.Domain); d != nil {
 		v.NsLabels = d.Labels
 	}
@@ -142,10 +154,6 @@ func dtrackItem(id string, cfg share.CLUSDependencyTrack) (*dtrack.Item, error) 
 	proj, err := dtrack.Render(cfg, v)
 	if err != nil {
 		return nil, err
-	}
-	digest := wl.ImageDigest
-	if digest == "" {
-		digest = wl.ImageID
 	}
 	meta := sbom.Meta{Source: sbom.SourceContainer, Name: podName, ID: id, Domain: wl.Domain, Cluster: cluster, Digest: wl.ImageDigest}
 	imageID := wl.ImageID
@@ -175,12 +183,15 @@ func dtrackItem(id string, cfg share.CLUSDependencyTrack) (*dtrack.Item, error) 
 
 // dtrackScanDone queues the SBOM of a scanned container. It never blocks scanning.
 func dtrackScanDone(id string) {
-	u, cfg, _ := dtrackState()
+	u, cfg, _, _ := dtrackState()
 	if u == nil || !isLeader() {
 		return
 	}
 	it, err := dtrackItem(id, cfg)
-	if err != nil {
+	if errors.Is(err, errDtrackPodUnknown) {
+		log.WithFields(log.Fields{"workload": id}).Debug("dtrack: pod not known yet, the sweep uploads it later")
+		return
+	} else if err != nil {
 		log.WithFields(log.Fields{"workload": id, "error": err}).Warn("no upload to Dependency-Track: " + dtrackReason(err))
 		return
 	}
@@ -206,7 +217,7 @@ func dtrackSweepLoop() {
 
 // dtrackSweep queues all scanned running containers and deactivates projects that are gone.
 func dtrackSweep(now time.Time) {
-	u, cfg, startedAt := dtrackState()
+	u, cfg, startedAt, ctx := dtrackState()
 	if u == nil {
 		return
 	}
@@ -246,5 +257,5 @@ func dtrackSweep(now time.Time) {
 	grace := dtrackGrace(cfg)
 	// Only the leader, after the full cache sync and after the grace period, can tell that a project is really gone.
 	canDeactivate := syncInitDone && now.Sub(cacher.leaderElectedAt) > grace && now.Sub(startedAt) > grace
-	u.Sweep(context.Background(), items, grace, canDeactivate)
+	u.Sweep(ctx, items, grace, canDeactivate)
 }

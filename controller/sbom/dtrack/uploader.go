@@ -227,7 +227,6 @@ func (u *Uploader) Sweep(ctx context.Context, items []Item, grace time.Duration,
 
 	type gone struct {
 		key string
-		e   *entry
 		p   Project
 	}
 	var list []gone
@@ -235,11 +234,14 @@ func (u *Uploader) Sweep(ctx context.Context, items []Item, grace time.Duration,
 	gen := u.gen
 	for k, e := range u.uploaded {
 		if !e.inactive && now.Sub(e.lastSeen) > grace {
-			list = append(list, gone{k, e, e.project})
+			list = append(list, gone{k, e.project})
 		}
 	}
 	u.mu.Unlock()
 	for _, g := range list {
+		if ctx.Err() != nil { // uploader stopped (DT disabled or reconfigured)
+			return
+		}
 		sctx, cancel := context.WithTimeout(ctx, uploadTimeout)
 		err := u.c.SetActive(sctx, g.p.Name, g.p.Version, false)
 		cancel()
@@ -249,8 +251,10 @@ func (u *Uploader) Sweep(ctx context.Context, items []Item, grace time.Duration,
 			continue
 		}
 		u.mu.Lock()
-		if gen == u.gen {
-			g.e.inactive = true
+		// the worker may have stored a new entry meanwhile: mark the current one, so that
+		// a project that came back is uploaded and activated again by the next Enqueue
+		if e := u.uploaded[g.key]; gen == u.gen && e != nil {
+			e.inactive = true
 		}
 		u.mu.Unlock()
 		log.WithFields(fields).Info("dtrack: project deactivated")

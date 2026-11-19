@@ -297,3 +297,25 @@ func TestDtrackFreshUploaderDeactivatesNothing(t *testing.T) {
 		t.Errorf("uploads %d patches %d", u, p)
 	}
 }
+
+func TestDtrackUnknownPodAndImageID(t *testing.T) {
+	dtrackEnv(t)
+	f := newFakeDTrack(t)
+	dtrackStart(f, nil)
+	// pod event not received yet: no per-pod project
+	dtrackAddPod("w1", "ns", "web-1", "web-rs", nil)
+	dtrackPodUpdate(nil, &resource.Pod{Name: "web-1", Domain: "ns"})
+	dtrackSweep(time.Now())
+	time.Sleep(200 * time.Millisecond)
+	if u, _ := f.counts(); u != 0 {
+		t.Fatalf("unknown pod: got %d uploads", u)
+	}
+	// no repo digest: {digest} uses the image ID
+	dtrackAddPod("w1", "ns", "web-1", "web-rs", nil)
+	wlCacheMap["w1"].workload.ImageDigest, wlCacheMap["w1"].workload.ImageID = "", "img-id-1"
+	dtrackSweep(time.Now())
+	f.waitUploads(t, 1)
+	if f.uploads[0].version != "img-id-1" {
+		t.Errorf("version %q", f.uploads[0].version)
+	}
+}

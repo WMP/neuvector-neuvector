@@ -146,6 +146,11 @@ func handlerDependencyTrackConfig(w http.ResponseWriter, r *http.Request, ps htt
 			cfg.Enabled = *req.Enabled
 		}
 		if req.URL != nil {
+			// the stored key must not follow the URL to another server
+			if newURL != cfg.URL && req.APIKey == nil && cfg.APIKey != "" {
+				bad("api_key is required when the URL changes")
+				return
+			}
 			cfg.URL = newURL
 		}
 		if req.APIKey != nil {

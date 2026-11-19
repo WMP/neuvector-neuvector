@@ -114,7 +114,7 @@ func TestValidateTemplates(t *testing.T) {
 		{"{foo}", "", nil}, {"", "{foo}", nil}, {"{pod.metadata.labels.}", "", nil},
 		{"{pod.metadata.labels.a b}", "", nil}, {"{cluster", "", nil}, {"cluster}", "", nil},
 		{"{{cluster}}", "", nil}, {"a\nb", "", nil}, {string(long), "", nil},
-		{"", "", []string{"a,b"}}, {"", "", []string{" "}}, {"", "", []string{"{x}"}}, {"", "", many},
+		{"", "", []string{"a,b"}}, {"", "", []string{" "}}, {" ", "", nil}, {"", "  ", nil}, {"", "", []string{"{x}"}}, {"", "", many},
 	}
 	for _, b := range bad {
 		if err := ValidateTemplates(b.name, b.ver, b.tags); err == nil {

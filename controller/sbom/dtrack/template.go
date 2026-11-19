@@ -103,6 +103,9 @@ func symbolValue(s string, v Vars) string {
 // ValidateTemplates checks the project name, version and tag templates. Empty name and version mean the defaults.
 func ValidateTemplates(name, version string, tags []string) error {
 	for _, t := range []struct{ field, tpl string }{{"project name", name}, {"project version", version}} {
+		if t.tpl != "" && strings.TrimSpace(t.tpl) == "" {
+			return fmt.Errorf("%s contains only spaces", t.field)
+		}
 		if _, err := parseSymbols(t.tpl); err != nil {
 			return fmt.Errorf("%s in %s", err, t.field)
 		}
