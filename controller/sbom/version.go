@@ -10,7 +10,7 @@ import (
 )
 
 // Version comparison per purl type:
-//   - deb, rpm, apk, alpm and "" (no purl, an OS package): utils.NewVersion (dpkg algorithm, as admission control).
+//   - deb, rpm, apk, alpm and "" (no purl: OS packages and the few applications without a purl): utils.NewVersion (dpkg algorithm, as admission control).
 //   - every other type (maven, npm, pypi, golang, gem, ...): go-version (semver); when it cannot parse a side, utils.NewVersion.
 //   - when no comparator parses a side: "=" matches on equal strings, the other operators never match.
 

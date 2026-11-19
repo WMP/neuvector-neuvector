@@ -106,19 +106,20 @@ func addComponents(list []api.RESTComponent, add []api.RESTComponent) []api.REST
 	return list
 }
 
-// scanModulesOrSkip returns ok=false when the object has no usable scan.
-func scanModulesOrSkip(id string) ([]*share.ScanModule, string, bool) {
+// scanModulesOrSkip returns ok=false when the object has no usable scan. Read errors are counted in errs.
+func scanModulesOrSkip(id string, errs *int) ([]*share.ScanModule, string, bool) {
 	modules, baseOS, err := cacher.GetScanModules(id)
 	if err != nil {
 		if !errors.Is(err, common.ErrObjectNotFound) {
-			log.WithFields(log.Fields{"id": id, "error": err}).Error("Failed to get scan modules")
+			*errs++
+			log.WithFields(log.Fields{"id": id, "error": err}).Debug("Failed to get scan modules")
 		}
 		return nil, "", false
 	}
 	return modules, baseOS, true
 }
 
-func searchComponentRegistryImages(r *http.Request, q *componentQuery, acc *access.AccessControl) []*api.RESTComponentRegistryImage {
+func searchComponentRegistryImages(r *http.Request, q *componentQuery, acc *access.AccessControl, errs *int) []*api.RESTComponentRegistryImage {
 	names := []string{common.RegistryRepoScanName, common.RegistryFedRepoScanName}
 	for _, s := range scanner.GetAllRegistrySummary(share.ScopeAll, acc) {
 		names = append(names, s.Name)
@@ -129,8 +130,12 @@ func searchComponentRegistryImages(r *http.Request, q *componentQuery, acc *acce
 	list := make([]*api.RESTComponentRegistryImage, 0)
 	for _, name := range names {
 		var ids []string
+		rowDomain := map[string]string{} // the image list shows the registry domain for tags without one
 		for _, row := range scanner.GetRegistryImageSummary(name, nil, acc) {
 			ids = append(ids, row.ImageID)
+			if rowDomain[row.ImageID] == "" {
+				rowDomain[row.ImageID] = row.Domain
+			}
 		}
 		slices.Sort(ids)
 		for _, id := range slices.Compact(ids) {
@@ -140,7 +145,8 @@ func searchComponentRegistryImages(r *http.Request, q *componentQuery, acc *acce
 			modules, sum, err := scanner.GetRegistryImageModules(name, id, acc)
 			if err != nil || sum == nil {
 				if err != nil && !errors.Is(err, common.ErrObjectNotFound) && !errors.Is(err, common.ErrObjectAccessDenied) {
-					log.WithFields(log.Fields{"registry": name, "id": id, "error": err}).Error("Failed to get scan modules")
+					*errs++
+					log.WithFields(log.Fields{"registry": name, "id": id, "error": err}).Debug("Failed to get scan modules")
 				}
 				continue
 			}
@@ -162,6 +168,9 @@ func searchComponentRegistryImages(r *http.Request, q *componentQuery, acc *acce
 				if img.Domain == "" {
 					img.Domain = i.Domain
 				}
+			}
+			if img.Domain == "" {
+				img.Domain = rowDomain[id]
 			}
 			slices.Sort(img.Images)
 			list = append(list, img)
@@ -202,6 +211,7 @@ func handlerScanComponent(w http.ResponseWriter, r *http.Request, ps httprouter.
 		RunningImages: make([]*api.RESTComponentRunningImage, 0),
 	}
 
+	var errs int // objects whose modules could not be read
 	running := map[string]*api.RESTComponentRunningImage{}
 	for _, wl := range cacher.GetAllWorkloadsBrief("", acc) {
 		if r.Context().Err() != nil {
@@ -210,7 +220,7 @@ func handlerScanComponent(w http.ResponseWriter, r *http.Request, ps httprouter.
 		if wl.State == api.WorkloadStateExit {
 			continue
 		}
-		modules, baseOS, ok := scanModulesOrSkip(wl.ID)
+		modules, baseOS, ok := scanModulesOrSkip(wl.ID, &errs)
 		if !ok {
 			continue
 		}
@@ -251,22 +261,27 @@ func handlerScanComponent(w http.ResponseWriter, r *http.Request, ps httprouter.
 		if r.Context().Err() != nil {
 			return
 		}
-		if modules, baseOS, ok := scanModulesOrSkip(host.ID); ok {
+		if modules, baseOS, ok := scanModulesOrSkip(host.ID, &errs); ok {
 			if comps := q.find(modules, baseOS); len(comps) > 0 {
 				resp.Hosts = append(resp.Hosts, &api.RESTComponentHost{ID: host.ID, Name: host.Name, Components: comps})
 			}
 		}
 	}
 
-	resp.Images = searchComponentRegistryImages(r, q, acc)
+	resp.Images = searchComponentRegistryImages(r, q, acc, &errs)
 	if r.Context().Err() != nil {
 		return
+	}
+	if errs > 0 {
+		log.WithFields(log.Fields{"objects": errs}).Error("Component search could not read the modules of some objects")
 	}
 
 	slices.SortFunc(resp.Workloads, func(a, b *api.RESTComponentWorkload) int {
 		return strings.Compare(a.Domain+"\x00"+a.Name+"\x00"+a.Container+"\x00"+a.ID, b.Domain+"\x00"+b.Name+"\x00"+b.Container+"\x00"+b.ID)
 	})
-	slices.SortFunc(resp.Hosts, func(a, b *api.RESTComponentHost) int { return strings.Compare(a.Name, b.Name) })
+	slices.SortFunc(resp.Hosts, func(a, b *api.RESTComponentHost) int {
+		return strings.Compare(a.Name+"\x00"+a.ID, b.Name+"\x00"+b.ID)
+	})
 	slices.SortFunc(resp.RunningImages, func(a, b *api.RESTComponentRunningImage) int {
 		return strings.Compare(a.Image+"\x00"+a.ImageID, b.Image+"\x00"+b.ImageID)
 	})
