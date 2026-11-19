@@ -711,6 +711,11 @@ func (m *scanMethod) GetRegistryImageModules(name, id string, acc *access.Access
 			}()
 			if err == nil { // read the db after stateMux is released: a component search calls this for every image
 				modules, err = db.GetModules(id)
+				rs.stateLock()
+				if _, ok := rs.summary[id]; !ok { // removed during the db read: its row is gone and the modules would be empty
+					err = common.ErrObjectNotFound
+				}
+				rs.stateUnlock()
 			}
 			if err == nil {
 				return modules, sum, nil
