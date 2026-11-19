@@ -9,6 +9,7 @@ replace (
 )
 
 require (
+	github.com/CycloneDX/cyclonedx-go v0.12.0
 	github.com/alitto/pond v1.9.2
 	github.com/aws/aws-sdk-go v1.55.7
 	github.com/beevik/etree v1.8.1
@@ -51,6 +52,7 @@ require (
 	github.com/s3rj1k/go-fanotify/fanotify v0.0.0-20240229202106-bca3154da60a
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spaolacci/murmur3 v1.1.0
+	github.com/spdx/tools-golang v0.5.7
 	github.com/streadway/simpleuuid v0.0.0-20130420165545-6617b501e485
 	github.com/stretchr/testify v1.12.1
 	github.com/urfave/cli/v3 v3.14.0
@@ -80,6 +82,7 @@ require (
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/Microsoft/hcsshim v0.14.1 // indirect
+	github.com/anchore/go-struct-converter v0.1.0 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/chai2010/gettext-go v1.0.2 // indirect
