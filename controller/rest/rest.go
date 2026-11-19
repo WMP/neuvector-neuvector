@@ -1883,6 +1883,7 @@ func StartRESTServer(isNewCluster, isLead bool, maxConcurrentRepoScanTasks, scan
 	r.POST("/v1/scan/workload/:id", handlerScanWorkloadReq)
 	r.GET("/v1/scan/workload/:id", handlerScanWorkloadReport)
 	r.GET("/v1/scan/workload/:id/sbom", handlerScanWorkloadSBOM)
+	r.GET("/v1/scan/component", handlerScanComponent)
 	r.POST("/v1/scan/workloads/scan_report", handlerWorkloadsScanReport) // Returns scan report of all queried workloads' scan result
 	r.GET("/v1/scan/image", handlerScanImageSummary)                     // Returns all workload's scan result summary by images
 	r.GET("/v1/scan/image/:id", handlerScanImageReport)                  // Returns workload scan result by workload's image ID
