@@ -271,8 +271,12 @@ func TestDependencyTrackPreviewPermissions(t *testing.T) {
 			t.Errorf("%s: status=%d, want 403", role, st)
 		}
 	}
-	if st, _, _ := dtPreview(body, api.UserRoleReader, nil); st != http.StatusOK {
-		t.Errorf("reader: status=%d, want 200", st)
+	// sbom write is required, so a reader cannot read labels through templates
+	if st, _, _ := dtPreview(body, api.UserRoleReader, nil); st != http.StatusForbidden {
+		t.Errorf("reader: status=%d, want 403", st)
+	}
+	if st, _, _ := dtPreview(body, api.UserRoleAdmin, nil); st != http.StatusOK {
+		t.Errorf("admin: status=%d, want 200", st)
 	}
 	// the sbom permission must be global
 	ns := map[string][]string{"sbom-reader": {"ns1"}}

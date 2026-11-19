@@ -202,7 +202,8 @@ func handlerDependencyTrackPreview(w http.ResponseWriter, r *http.Request, ps ht
 	if acc == nil {
 		return
 	}
-	if !acc.HasGlobalPermissions(share.PERM_SBOM, 0) {
+	// write, like the configuration: sbom read alone must not show pod and namespace labels
+	if !acc.HasGlobalPermissions(share.PERM_SBOM, share.PERM_SBOM) {
 		restRespAccessDenied(w, login)
 		return
 	}
