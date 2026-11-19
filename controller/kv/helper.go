@@ -2375,17 +2375,67 @@ func (m clusterHelper) DeleteRegistryImageSummaryAndReport(name, id, fedRole str
 	return nil
 }
 
+// encodeScanReport gob-encodes and gzips report. When the result is not below limit it
+// drops, in order, Syft-only modules (Origin "syft"), then Licenses, then Purl, until it fits.
+// NeuVector modules and Vuls stay. report itself is not changed.
+func encodeScanReport(report *share.CLUSScanReport, limit int) ([]byte, error) {
+	encode := func(r *share.CLUSScanReport) ([]byte, error) {
+		var buf bytes.Buffer
+		if err := gob.NewEncoder(&buf).Encode(r); err != nil {
+			return nil, err
+		}
+		return utils.GzipBytes(buf.Bytes()), nil
+	}
+
+	zb, err := encode(report)
+	if err != nil || len(zb) < limit {
+		return zb, err
+	}
+
+	// Drop data that CVE matching and admission do not use, in this order. Copy before change.
+	cp := *report
+	cp.Modules = slices.DeleteFunc(slices.Clone(report.Modules), func(m *share.ScanModule) bool { return m.Origin == "syft" })
+	steps := []struct {
+		name  string
+		strip func(*share.ScanModule)
+	}{
+		{"syft modules", nil},
+		{"licenses", func(m *share.ScanModule) { m.Licenses = nil }},
+		{"purl", func(m *share.ScanModule) { m.Purl = "" }},
+	}
+	origSize, step := len(zb), ""
+	for _, st := range steps {
+		if st.strip != nil {
+			for i, m := range cp.Modules {
+				c := *m
+				st.strip(&c)
+				cp.Modules[i] = &c
+			}
+		}
+		if zb, err = encode(&cp); err != nil {
+			return nil, err
+		}
+		if step = st.name; len(zb) < limit {
+			break
+		}
+	}
+	log.WithFields(log.Fields{
+		"imageID": report.ImageID, "digest": report.Digest, "limit": limit, "lastStep": step,
+		"sizeBefore": origSize, "sizeAfter": len(zb),
+		"modulesBefore": len(report.Modules), "modulesAfter": len(cp.Modules),
+	}).Warn("Scan report too big for KV, dropped SBOM data")
+	return zb, nil
+}
+
 func (m clusterHelper) PutRegistryImageSummaryAndReport(name, id, fedRole string, sum *share.CLUSRegistryImageSummary, report *share.CLUSScanReport) error {
 	txn := cluster.Transact()
 	defer txn.Close()
 
 	key := share.CLUSRegistryImageDataKey(name, id)
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(report); err != nil {
+	zbRpt, err := encodeScanReport(report, cluster.KVValueSizeMax)
+	if err != nil {
 		return fmt.Errorf("failed to encode scan report: %w", err)
 	}
-	zbRpt := utils.GzipBytes(buf.Bytes())
 	txn.PutBinary(key, zbRpt)
 
 	key = share.CLUSRegistryImageStateKey(name, id)
