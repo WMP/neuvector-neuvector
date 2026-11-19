@@ -1007,6 +1007,9 @@ func CompileUriPermitsMapping() {
 				"v1/sniffer",
 				"v1/file/group/config", // for providing similar function as crd import but do not rely on crd webhook
 			},
+			CONST_API_SBOM: {
+				"v1/sbom/dependency_track/preview",
+			},
 			CONST_API_ADM_CONTROL: {
 				"v1/debug/admission/test",
 				"v1/admission/rule",

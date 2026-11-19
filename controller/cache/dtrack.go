@@ -114,18 +114,20 @@ func dtrackState() (*dtrack.Uploader, share.CLUSDependencyTrack, time.Time, cont
 	return dtrackUploader, dtrackCfg, dtrackStartedAt, dtrackCtx
 }
 
-// errDtrackPodUnknown: the pod event has not arrived yet (or the pod is deleted). Without it, a pod
+// ErrDtrackPodUnknown: the pod event has not arrived yet (or the pod is deleted). Without it, a pod
 // with an owner would look like a pod without owner and get a project of its own.
-var errDtrackPodUnknown = errors.New("pod not known yet")
+var ErrDtrackPodUnknown = errors.New("pod not known yet")
 
-// dtrackItem builds the upload item of a workload. It returns nil, nil when the workload is gone or stopped.
-// The SBOM is built when the item is sent, so this does not read the database.
-func dtrackItem(id string, cfg share.CLUSDependencyTrack) (*dtrack.Item, error) {
+// ErrDtrackNotRunning: the workload is gone or stopped.
+var ErrDtrackNotRunning = errors.New("workload is not running")
+
+// dtrackVars collects the template values of a workload. It returns nil, nil when the workload is gone or stopped.
+func dtrackVars(id string) (*dtrack.Vars, *share.CLUSWorkload, error) {
 	cacheMutexRLock()
 	c := wlCacheMap[id]
 	if c == nil || c.workload == nil || !c.workload.Running {
 		cacheMutexRUnlock()
-		return nil, nil
+		return nil, nil, nil
 	}
 	wl := *c.workload
 	podName := c.podName
@@ -149,17 +151,39 @@ func dtrackItem(id string, cfg share.CLUSDependencyTrack) (*dtrack.Item, error) 
 	p, ok := dtrackPods[wl.Domain+"/"+podName]
 	dtrackPodMutex.Unlock()
 	if !ok {
-		return nil, errDtrackPodUnknown
+		return nil, nil, ErrDtrackPodUnknown
 	}
 	v.ReplicaSet, v.PodLabels = p.ownerName, p.labels
 	if d := getDomainData(wl.Domain); d != nil {
 		v.NsLabels = d.Labels
 	}
+	return &v, &wl, nil
+}
 
-	proj, err := dtrack.Render(cfg, v)
+// DtrackPreview renders the project of a workload for the given configuration. It uploads nothing.
+func (m CacheMethod) DtrackPreview(id string, cfg share.CLUSDependencyTrack) (dtrack.Project, error) {
+	v, _, err := dtrackVars(id)
+	if err != nil {
+		return dtrack.Project{}, err
+	}
+	if v == nil {
+		return dtrack.Project{}, ErrDtrackNotRunning
+	}
+	return dtrack.Render(cfg, *v)
+}
+
+// dtrackItem builds the upload item of a workload. It returns nil, nil when the workload is gone or stopped.
+// The SBOM is built when the item is sent, so this does not read the database.
+func dtrackItem(id string, cfg share.CLUSDependencyTrack) (*dtrack.Item, error) {
+	v, wl, err := dtrackVars(id)
+	if v == nil {
+		return nil, err
+	}
+	proj, err := dtrack.Render(cfg, *v)
 	if err != nil {
 		return nil, err
 	}
+	podName, cluster, digest := v.Pod, v.Cluster, v.Digest
 	meta := sbom.Meta{Source: sbom.SourceContainer, Name: podName, ID: id, Domain: wl.Domain, Cluster: cluster, Digest: wl.ImageDigest}
 	imageID := wl.ImageID
 	return &dtrack.Item{ID: id, Project: proj, Digest: digest, BOM: func() ([]byte, error) {
@@ -193,7 +217,7 @@ func dtrackScanDone(id string) {
 		return
 	}
 	it, err := dtrackItem(id, cfg)
-	if errors.Is(err, errDtrackPodUnknown) {
+	if errors.Is(err, ErrDtrackPodUnknown) {
 		log.WithFields(log.Fields{"workload": id}).Debug("dtrack: pod not known yet, the sweep uploads it later")
 		return
 	} else if err != nil {

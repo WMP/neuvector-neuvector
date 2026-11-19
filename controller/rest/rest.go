@@ -1882,6 +1882,7 @@ func StartRESTServer(isNewCluster, isLead bool, maxConcurrentRepoScanTasks, scan
 	r.GET("/v1/scan/cache_data/:id", handlerScanCacheData)
 	r.GET("/v1/sbom/dependency_track", handlerDependencyTrackGet)
 	r.PATCH("/v1/sbom/dependency_track", handlerDependencyTrackConfig)
+	r.POST("/v1/sbom/dependency_track/preview", handlerDependencyTrackPreview)
 	r.POST("/v1/scan/workload/:id", handlerScanWorkloadReq)
 	r.GET("/v1/scan/workload/:id", handlerScanWorkloadReport)
 	r.GET("/v1/scan/workload/:id/sbom", handlerScanWorkloadSBOM)

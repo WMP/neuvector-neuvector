@@ -14,6 +14,7 @@ import (
 
 	"github.com/neuvector/neuvector/controller/access"
 	"github.com/neuvector/neuvector/controller/api"
+	"github.com/neuvector/neuvector/controller/cache"
 	"github.com/neuvector/neuvector/controller/sbom/dtrack"
 	"github.com/neuvector/neuvector/share"
 )
@@ -191,4 +192,64 @@ func handlerDependencyTrackConfig(w http.ResponseWriter, r *http.Request, ps htt
 	}
 
 	restRespSuccess(w, r, nil, acc, login, nil, "Configure Dependency-Track")
+}
+
+// handlerDependencyTrackPreview renders the project of a workload; it uploads nothing and needs no API key.
+func handlerDependencyTrackPreview(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	defer r.Body.Close()
+
+	acc, login := getAccessControl(w, r, access.AccessOPRead)
+	if acc == nil {
+		return
+	}
+	if !acc.HasGlobalPermissions(share.PERM_SBOM, 0) {
+		restRespAccessDenied(w, login)
+		return
+	}
+
+	body, err := io.ReadAll(getDefaultReader(r.Body))
+	var req api.RESTDependencyTrackPreviewReq
+	if err != nil || json.Unmarshal(body, &req) != nil || req.WorkloadID == "" {
+		restRespError(w, http.StatusBadRequest, api.RESTErrInvalidRequest)
+		return
+	}
+
+	cconf, _ := clusHelper.GetSystemConfigRev(access.NewAdminAccessControl())
+	if cconf == nil {
+		restRespError(w, http.StatusInternalServerError, api.RESTErrFailReadCluster)
+		return
+	}
+	cfg := cconf.DependencyTrack // omitted templates keep the stored value
+	if req.ProjectName != nil {
+		cfg.ProjectName = *req.ProjectName
+	}
+	if req.ProjectVersion != nil {
+		cfg.ProjectVersion = *req.ProjectVersion
+	}
+	if req.Tags != nil {
+		cfg.Tags = *req.Tags
+	}
+	if err := dtrack.ValidateTemplates(cfg.ProjectName, cfg.ProjectVersion, cfg.Tags); err != nil {
+		restRespErrorMessage(w, http.StatusBadRequest, api.RESTErrInvalidRequest, err.Error())
+		return
+	}
+
+	if _, err := cacher.GetWorkload(req.WorkloadID, "", acc); err != nil {
+		sbomRespErr(w, login, err)
+		return
+	}
+	resp := &api.RESTDependencyTrackPreview{Tags: []string{}}
+	proj, err := cacher.DtrackPreview(req.WorkloadID, cfg)
+	switch {
+	case err == nil:
+		resp.ProjectName, resp.ProjectVersion = proj.Name, proj.Version
+		resp.Tags = append(resp.Tags, proj.Tags...)
+	case errors.Is(err, cache.ErrDtrackPodUnknown), errors.Is(err, cache.ErrDtrackNotRunning), errors.Is(err, dtrack.ErrEmptySymbol):
+		resp.SkippedReason = err.Error()
+	default:
+		log.WithFields(log.Fields{"error": err}).Error("Failed to render the Dependency-Track project")
+		restRespError(w, http.StatusInternalServerError, api.RESTErrFailReadCluster)
+		return
+	}
+	restRespSuccess(w, r, resp, acc, login, nil, "")
 }

@@ -4461,3 +4461,17 @@ type RESTDependencyTrackConfig struct {
 type RESTDependencyTrackConfigData struct {
 	Config *RESTDependencyTrackConfig `json:"config"`
 }
+
+type RESTDependencyTrackPreviewReq struct {
+	ProjectName    *string   `json:"project_name,omitempty"`
+	ProjectVersion *string   `json:"project_version,omitempty"`
+	Tags           *[]string `json:"tags,omitempty"`
+	WorkloadID     string    `json:"workload_id"`
+}
+
+type RESTDependencyTrackPreview struct {
+	ProjectName    string   `json:"project_name"`
+	ProjectVersion string   `json:"project_version"`
+	Tags           []string `json:"tags"`
+	SkippedReason  string   `json:"skipped_reason,omitempty"`
+}

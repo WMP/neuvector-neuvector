@@ -3129,6 +3129,37 @@ paths:
           description: Invalid request
         "403":
           description: The sbom write permission is missing
+  /v1/sbom/dependency_track/preview:
+    post:
+      tags:
+        - Scan
+      summary: Preview the Dependency-Track project of a workload
+      description: Requires the sbom permission in the global scope and access to the workload. Nothing is uploaded. A template that is absent uses the stored configuration. A project that cannot be rendered gives status 200 and skipped_reason.
+      security:
+        - ApiKeyAuth: []
+        - TokenAuth: []
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Templates to test and the workload
+          required: true
+          schema:
+            $ref: "#/definitions/RESTDependencyTrackPreviewReq"
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/RESTDependencyTrackPreview"
+        "400":
+          description: Invalid request
+        "403":
+          description: The sbom permission is missing
+        "404":
+          description: The workload is not found
   /v1/scan/status:
     get:
       tags:
@@ -12170,6 +12201,42 @@ definitions:
     properties:
       config:
         $ref: "#/definitions/RESTDependencyTrackConfig"
+  RESTDependencyTrackPreviewReq:
+    type: object
+    required:
+      - workload_id
+    properties:
+      project_name:
+        type: string
+        description: Template, same symbols as in the configuration. Absent uses the stored value.
+      project_version:
+        type: string
+        description: Template. Absent uses the stored value.
+      tags:
+        type: array
+        description: Templates. Absent uses the stored value.
+        items:
+          type: string
+      workload_id:
+        type: string
+  RESTDependencyTrackPreview:
+    type: object
+    required:
+      - project_name
+      - project_version
+      - tags
+    properties:
+      project_name:
+        type: string
+      project_version:
+        type: string
+      tags:
+        type: array
+        items:
+          type: string
+      skipped_reason:
+        type: string
+        description: Set when no project is rendered, for example a template symbol has no value or the pod is not known yet.
   RESTSystemSummaryData:
     type: object
     required:

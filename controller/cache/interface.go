@@ -5,6 +5,7 @@ import (
 	"github.com/neuvector/neuvector/controller/api"
 	"github.com/neuvector/neuvector/controller/common"
 	nvsysadmission "github.com/neuvector/neuvector/controller/nvk8sapi/nvvalidatewebhookcfg/admission"
+	"github.com/neuvector/neuvector/controller/sbom/dtrack"
 	"github.com/neuvector/neuvector/share"
 	"github.com/neuvector/neuvector/share/cluster"
 	scanUtils "github.com/neuvector/neuvector/share/scan"
@@ -152,6 +153,7 @@ type CacheInterface interface {
 	GetScanPlatformSummary(acc *access.AccessControl) (*api.RESTScanPlatformSummary, error)
 	GetVulnerabilityReport(id string, showTag string) ([]*api.RESTVulnerability, []*api.RESTScanModule, error)
 	GetScanModules(id string) ([]*share.ScanModule, string, error)
+	DtrackPreview(id string, cfg share.CLUSDependencyTrack) (dtrack.Project, error)
 
 	// Compliance
 	GetComplianceProfile(name string, acc *access.AccessControl) (*api.RESTComplianceProfile, map[string][]string, error)

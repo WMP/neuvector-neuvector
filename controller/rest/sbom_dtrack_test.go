@@ -11,7 +11,9 @@ import (
 
 	"github.com/neuvector/neuvector/controller/access"
 	"github.com/neuvector/neuvector/controller/api"
+	"github.com/neuvector/neuvector/controller/cache"
 	"github.com/neuvector/neuvector/controller/kv"
+	"github.com/neuvector/neuvector/controller/sbom/dtrack"
 	"github.com/neuvector/neuvector/share"
 )
 
@@ -24,6 +26,7 @@ func dtSetup() {
 	clusHelper = &mockCluster
 	router.GET(dtURL, handlerDependencyTrackGet)
 	router.PATCH(dtURL, handlerDependencyTrackConfig)
+	router.POST(dtURL+"/preview", handlerDependencyTrackPreview)
 	access.AddRole("sbom-reader", &share.CLUSUserRoleInternal{ReadPermits: share.PERM_SBOM})
 	access.AddRole("sbom-none", &share.CLUSUserRoleInternal{ReadPermits: share.PERM_REG_SCAN})
 }
@@ -173,5 +176,107 @@ func TestDependencyTrackPermissions(t *testing.T) {
 	}
 	if w := restCallWithRole("PATCH", dtURL, []byte(`{"config":`+body+`}`), api.UserRoleNone, roles); w.status != http.StatusForbidden {
 		t.Errorf("namespace user PATCH: status=%d, want 403", w.status)
+	}
+}
+
+type dtPreviewMock struct {
+	sbomMockCache
+}
+
+// the real renderer with fixed values; wl3 is a pod that is not known yet
+func (m *dtPreviewMock) DtrackPreview(id string, cfg share.CLUSDependencyTrack) (dtrack.Project, error) {
+	if id == "wl3" {
+		return dtrack.Project{}, cache.ErrDtrackPodUnknown
+	}
+	return dtrack.Render(cfg, dtrack.Vars{Cluster: "c1", Namespace: "ns1", Pod: "pod1", Container: "app",
+		PodLabels: map[string]string{"team": "blue"}})
+}
+
+func (m *dtPreviewMock) GetWorkload(id, view string, acc *access.AccessControl) (*api.RESTWorkload, error) {
+	if id == "wl3" {
+		id = "wl1"
+	}
+	return m.sbomMockCache.GetWorkload(id, view, acc)
+}
+
+func dtPreview(body, role string, roles map[string][]string) (int, api.RESTDependencyTrackPreview, string) {
+	w := restCallWithRole("POST", dtURL+"/preview", []byte(body), role, roles)
+	var p api.RESTDependencyTrackPreview
+	json.Unmarshal(w.body, &p)
+	return w.status, p, string(w.body)
+}
+
+func TestDependencyTrackPreview(t *testing.T) {
+	dtSetup()
+	defer postTest()
+	cacher = &dtPreviewMock{}
+
+	// templates in the request
+	st, p, raw := dtPreview(`{"workload_id":"wl1","project_name":"{pod.metadata.labels.team}/{container}","project_version":"v-{namespace}","tags":["t-{cluster}"]}`, api.UserRoleAdmin, nil)
+	if st != http.StatusOK || p.ProjectName != "blue/app" || p.ProjectVersion != "v-ns1" || len(p.Tags) != 1 || p.Tags[0] != "t-c1" || p.SkippedReason != "" {
+		t.Errorf("status=%d body=%s", st, raw)
+	}
+
+	// omitted fields use the stored configuration
+	if w := dtPatch(api.UserRoleAdmin, `{"project_name":"stored-{pod}","tags":["a","b"]}`); w.status != http.StatusOK {
+		t.Fatalf("PATCH status=%d", w.status)
+	}
+	st, p, raw = dtPreview(`{"workload_id":"wl1","project_version":"x"}`, api.UserRoleAdmin, nil)
+	if st != http.StatusOK || p.ProjectName != "stored-pod1" || p.ProjectVersion != "x" || len(p.Tags) != 2 {
+		t.Errorf("stored templates: status=%d body=%s", st, raw)
+	}
+
+	// no tags: an empty array, not null
+	st, _, raw = dtPreview(`{"workload_id":"wl1","tags":[]}`, api.UserRoleAdmin, nil)
+	if st != http.StatusOK || !strings.Contains(raw, `"tags":[]`) {
+		t.Errorf("tags must be an empty array: %s", raw)
+	}
+
+	// an empty symbol is not an error
+	st, p, raw = dtPreview(`{"workload_id":"wl1","project_name":"{pod.metadata.labels.nope}"}`, api.UserRoleAdmin, nil)
+	if st != http.StatusOK || p.ProjectName != "" || p.ProjectVersion != "" || !strings.Contains(p.SkippedReason, "empty template symbol") || !strings.Contains(raw, `"tags":[]`) {
+		t.Errorf("empty symbol: status=%d body=%s", st, raw)
+	}
+	// the pod is not known yet
+	st, p, raw = dtPreview(`{"workload_id":"wl3"}`, api.UserRoleAdmin, nil)
+	if st != http.StatusOK || p.SkippedReason != "pod not known yet" {
+		t.Errorf("unknown pod: status=%d body=%s", st, raw)
+	}
+
+	// invalid requests
+	for _, b := range []string{
+		`{"workload_id":"wl1","project_name":"{bogus}"}`,
+		`{"workload_id":"wl1","tags":["a,b"]}`,
+		`{"project_name":"x"}`,
+		`{"workload_id":""}`,
+		`not json`,
+	} {
+		if st, _, raw := dtPreview(b, api.UserRoleAdmin, nil); st != http.StatusBadRequest {
+			t.Errorf("%s: status=%d, want 400 (%s)", b, st, raw)
+		}
+	}
+	if st, _, _ := dtPreview(`{"workload_id":"nonexistent"}`, api.UserRoleAdmin, nil); st != http.StatusNotFound {
+		t.Errorf("unknown workload: status=%d, want 404", st)
+	}
+}
+
+func TestDependencyTrackPreviewPermissions(t *testing.T) {
+	dtSetup()
+	defer postTest()
+	cacher = &dtPreviewMock{}
+
+	body := `{"workload_id":"wl1"}`
+	for _, role := range []string{"sbom-none", api.UserRoleCIOps} {
+		if st, _, _ := dtPreview(body, role, nil); st != http.StatusForbidden {
+			t.Errorf("%s: status=%d, want 403", role, st)
+		}
+	}
+	if st, _, _ := dtPreview(body, api.UserRoleReader, nil); st != http.StatusOK {
+		t.Errorf("reader: status=%d, want 200", st)
+	}
+	// the sbom permission must be global
+	ns := map[string][]string{"sbom-reader": {"ns1"}}
+	if st, _, _ := dtPreview(body, api.UserRoleNone, ns); st != http.StatusForbidden {
+		t.Errorf("namespace user: status=%d, want 403", st)
 	}
 }

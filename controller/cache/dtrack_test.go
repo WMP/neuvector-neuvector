@@ -2,6 +2,7 @@ package cache
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/neuvector/neuvector/controller/resource"
+	"github.com/neuvector/neuvector/controller/sbom/dtrack"
 	"github.com/neuvector/neuvector/share"
 	"github.com/neuvector/neuvector/share/container"
 )
@@ -336,5 +338,30 @@ func TestDtrackFailedRescanKeepsProject(t *testing.T) {
 	dtrackSweep(time.Now())
 	if u, p := f.counts(); u != 1 || p != 0 {
 		t.Errorf("running container with a failed rescan: uploads %d patches %d", u, p)
+	}
+}
+
+func TestDtrackPreview(t *testing.T) {
+	dtrackEnv(t)
+	dtrackAddPod("w1", "ns", "web-1", "web-rs", map[string]string{"team": "blue"})
+	var m CacheMethod
+
+	cfg := share.CLUSDependencyTrack{ProjectName: "{pod.metadata.labels.team}/{replicaset}", Tags: []string{"c-{cluster}"}}
+	p, err := m.DtrackPreview("w1", cfg)
+	if err != nil || p.Name != "blue/web-rs" || len(p.Tags) != 1 || p.Tags[0] != "c-c1" {
+		t.Errorf("project %+v err %v", p, err)
+	}
+
+	cfg.ProjectName = "{pod.metadata.labels.missing}"
+	if _, err = m.DtrackPreview("w1", cfg); !errors.Is(err, dtrack.ErrEmptySymbol) {
+		t.Errorf("empty symbol: err %v", err)
+	}
+
+	dtrackPodUpdate(nil, &resource.Pod{Name: "web-1", Domain: "ns"})
+	if _, err = m.DtrackPreview("w1", cfg); !errors.Is(err, ErrDtrackPodUnknown) {
+		t.Errorf("unknown pod: err %v", err)
+	}
+	if _, err = m.DtrackPreview("nope", cfg); !errors.Is(err, ErrDtrackNotRunning) {
+		t.Errorf("unknown workload: err %v", err)
 	}
 }

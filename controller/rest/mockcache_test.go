@@ -6,6 +6,7 @@ import (
 	"github.com/neuvector/neuvector/controller/cache"
 	"github.com/neuvector/neuvector/controller/common"
 	nvsysadmission "github.com/neuvector/neuvector/controller/nvk8sapi/nvvalidatewebhookcfg/admission"
+	"github.com/neuvector/neuvector/controller/sbom/dtrack"
 	"github.com/neuvector/neuvector/share"
 	"github.com/neuvector/neuvector/share/cluster"
 	scanUtils "github.com/neuvector/neuvector/share/scan"
@@ -787,6 +788,10 @@ func (m *MockCache) GetAllPwdProfiles() (string, map[string]share.CLUSPwdProfile
 
 func (m *MockCache) GetNvUsage(fedRole string) api.RESTNvUsage {
 	return api.RESTNvUsage{}
+}
+
+func (m *MockCache) DtrackPreview(id string, cfg share.CLUSDependencyTrack) (dtrack.Project, error) {
+	return dtrack.Project{}, nil
 }
 
 func (m *MockCache) GetScanModules(id string) ([]*share.ScanModule, string, error) {
