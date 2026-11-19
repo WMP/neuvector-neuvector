@@ -695,15 +695,14 @@ func (m *scanMethod) GetRegistryImageModules(name, id string, acc *access.Access
 				if sum.ScannedAt.IsZero() || sum.Result != share.ScanErrorCode_ScanErrNone { // not scanned or scan failed: no SBOM rather than an empty one
 					return nil, nil, common.ErrObjectNotFound
 				}
-				_, modules, err := db.GetVulnerabilityModule(id)
-				if err != nil {
-					return nil, nil, err
-				}
 				c := *sum
 				c.Images = append([]share.CLUSImage(nil), sum.Images...)
 				c.Verifiers = append([]string(nil), sum.Verifiers...)
-				return modules, &c, nil
+				return nil, &c, nil
 			}()
+			if err == nil { // read the db after stateMux is released: a component search calls this for every image
+				modules, err = db.GetModules(id)
+			}
 			if err == nil {
 				return modules, sum, nil
 			}

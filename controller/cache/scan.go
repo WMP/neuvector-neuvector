@@ -1661,17 +1661,22 @@ func (m CacheMethod) GetVulnerabilityReport(id, showTag string) ([]*api.RESTVuln
 // GetScanModules returns the scan modules and base OS of a scanned object. The caller must check access first.
 func (m CacheMethod) GetScanModules(id string) ([]*share.ScanModule, string, error) {
 	scanMutexRLock()
-	defer scanMutexRUnlock()
-
 	info, ok := scanMap[id]
-	if !ok || info.lastScanTime.IsZero() || info.lastResult != share.ScanErrorCode_ScanErrNone { // not scanned or scan failed: no SBOM rather than an empty one
+	scanned := ok && !info.lastScanTime.IsZero() && info.lastResult == share.ScanErrorCode_ScanErrNone
+	var baseOS string
+	if scanned {
+		baseOS = info.baseOS
+	}
+	scanMutexRUnlock() // the db read below is slow; a component search calls this for every object
+
+	if !scanned { // not scanned or scan failed: no SBOM rather than an empty one
 		return nil, "", common.ErrObjectNotFound
 	}
-	_, modules, err := db.GetVulnerabilityModule(id)
+	modules, err := db.GetModules(id)
 	if err != nil {
 		return nil, "", err
 	}
-	return modules, info.baseOS, nil
+	return modules, baseOS, nil
 }
 
 func (m CacheMethod) GetScanPlatformSummary(acc *access.AccessControl) (*api.RESTScanPlatformSummary, error) {

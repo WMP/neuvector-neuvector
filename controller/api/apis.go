@@ -3630,6 +3630,52 @@ type RESTRegistryImageSummaryData struct {
 	Images []*RESTRegistryImageSummary `json:"images"`
 }
 
+// Component search: GET /v1/scan/component
+type RESTComponent struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Purl    string `json:"purl"`
+}
+
+type RESTComponentWorkload struct {
+	ID         string          `json:"id"`
+	Name       string          `json:"name"`      // pod name
+	Container  string          `json:"container"` // container name
+	Domain     string          `json:"domain"`
+	Image      string          `json:"image"`
+	ImageID    string          `json:"image_id"`
+	Components []RESTComponent `json:"components"`
+}
+
+type RESTComponentHost struct {
+	ID         string          `json:"id"`
+	Name       string          `json:"name"`
+	Components []RESTComponent `json:"components"`
+}
+
+type RESTComponentRegistryImage struct {
+	Registry   string          `json:"registry"`
+	ImageID    string          `json:"image_id"`
+	Digest     string          `json:"digest"`
+	Images     []string        `json:"images"` // repo:tag, sorted
+	Domain     string          `json:"domain"`
+	Components []RESTComponent `json:"components"`
+}
+
+type RESTComponentRunningImage struct {
+	ImageID    string          `json:"image_id"`
+	Image      string          `json:"image"`
+	Workloads  int             `json:"workloads"`
+	Components []RESTComponent `json:"components"`
+}
+
+type RESTComponentSearchData struct {
+	Workloads     []*RESTComponentWorkload      `json:"workloads"`
+	Hosts         []*RESTComponentHost          `json:"hosts"`
+	Images        []*RESTComponentRegistryImage `json:"images"`
+	RunningImages []*RESTComponentRunningImage  `json:"running_images"`
+}
+
 // Admission control
 const StartingLocalAdmCtrlRuleID = 1000
 const StartingLocalResponseRuleID = 8

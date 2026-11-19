@@ -513,6 +513,15 @@ func GetVulnerability(assetid string) ([]*share.ScanVulnerability, error) {
 	return UnzipVuls(mapsb[COL_VULS])
 }
 
+// GetModules reads only the modules column; the vulnerabilities are not decoded.
+func GetModules(assetid string) ([]*share.ScanModule, error) {
+	mapsb, err := getBytesColumns(assetid, COL_MODULES)
+	if err != nil {
+		return nil, err
+	}
+	return UnzipModules(mapsb[COL_MODULES])
+}
+
 func GetVulnerabilityModule(assetid string) ([]*share.ScanVulnerability, []*share.ScanModule, error) {
 	mapsb, err := getBytesColumns(assetid, COL_VULS|COL_MODULES)
 	if err != nil {

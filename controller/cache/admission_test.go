@@ -960,6 +960,83 @@ func TestIsModulesCriterionMet(t *testing.T) {
 	postTest()
 }
 
+func TestModulesCriterionSyftIgnored(t *testing.T) {
+	preTest()
+	nv := []*share.ScanModule{{Name: "vim", Version: "8.2.1"}, {Name: "log4j-core", Version: "2.14.0"}}
+	withSyft := append(append([]*share.ScanModule{}, nv...),
+		&share.ScanModule{Name: "vim", Version: "1.0.0", Origin: "syft"},
+		&share.ScanModule{Name: "log4j-core", Version: "2.20.0", Origin: "syft"},
+		&share.ScanModule{Name: "syftonly", Version: "3.0.0", Origin: "syft"})
+	ops := []string{share.CriteriaOpContainsAny, share.CriteriaOpContainsAll, share.CriteriaOpNotContainsAny, share.CriteriaOpContainsOtherThan}
+	values := []string{"vim", "vim=1.0", "vim=1.0.0", "vim>1.0.0", "vim<2.0.0", "log4j-core<2.17.1", "log4j-core>=2.17.1", "syftonly", "syftonly=3.0.0", "vim>=1.0.0<9.0.0", "log4j-core>=2.0.0<2.17.1", "vim, syftonly"}
+	for _, op := range ops {
+		for _, v := range values {
+			crt := &share.CLUSAdmRuleCriterion{Name: share.CriteriaKeyModules, Op: op, Value: v, ValueSlice: strings.Split(v, ",")}
+			m1, p1 := isModulesCriterionMet(crt, nv)
+			m2, p2 := isModulesCriterionMet(crt, withSyft)
+			if m1 != m2 || p1 != p2 {
+				t.Errorf("syft modules changed result: op=%s value=%s", op, v)
+			}
+		}
+	}
+	postTest()
+}
+
+func TestModulesCriterionRange(t *testing.T) {
+	preTest()
+	mods := func(vs ...string) []*share.ScanModule {
+		var l []*share.ScanModule
+		for i := 0; i < len(vs); i += 2 {
+			l = append(l, &share.ScanModule{Name: vs[i], Version: vs[i+1]})
+		}
+		return l
+	}
+	tests := []struct {
+		op, value string
+		mods      []*share.ScanModule
+		want      bool
+	}{
+		{share.CriteriaOpContainsAny, "log4j-core>=2.0.0<2.17.1", mods("log4j-core", "2.14.0"), true},
+		{share.CriteriaOpContainsAny, "log4j-core>=2.0.0<2.17.1", mods("log4j-core", "2.0.0"), true},   // lower bound inclusive
+		{share.CriteriaOpContainsAny, "log4j-core>=2.0.0<2.17.1", mods("log4j-core", "2.17.1"), false}, // upper bound exclusive
+		{share.CriteriaOpContainsAny, "log4j-core>=2.0.0<=2.17.1", mods("log4j-core", "2.17.1"), true},
+		{share.CriteriaOpContainsAny, "log4j-core>2.0.0<2.17.1", mods("log4j-core", "2.0.0"), false},
+		{share.CriteriaOpContainsAny, "log4j-core >= 2.0.0 < 2.17.1", mods("log4j-core", "2.5.0"), true},
+		{share.CriteriaOpContainsAny, "log4j-core>=2.0.0<2.17.1", mods("log4j-core", "1.2.0", "log4j-core", "2.18.0"), false},
+		{share.CriteriaOpContainsAny, "log4j-core>=2.0.0<2.17.1", mods("log4j-core", "1.2.0", "log4j-core", "2.5.0"), true}, // only one version in range
+		{share.CriteriaOpContainsAny, "log4j-core>=2.0.0<2.17.1", mods("other", "2.5.0"), false},
+		{share.CriteriaOpNotContainsAny, "log4j-core>=2.0.0<2.17.1", mods("log4j-core", "2.14.0"), false},
+		{share.CriteriaOpNotContainsAny, "log4j-core>=2.0.0<2.17.1", mods("log4j-core", "2.18.0"), true},
+		{share.CriteriaOpContainsAll, "log4j-core>=2.0.0<2.17.1, vim", mods("log4j-core", "2.14.0", "vim", "1"), true},
+		{share.CriteriaOpContainsAll, "log4j-core>=2.0.0<2.17.1, vim", mods("log4j-core", "2.18.0", "vim", "1"), false},
+		{share.CriteriaOpContainsOtherThan, "log4j-core>=2.0.0<2.17.1", mods("log4j-core", "2.14.0"), false},
+		{share.CriteriaOpContainsOtherThan, "log4j-core>=2.0.0<2.17.1", mods("log4j-core", "2.14.0", "log4j-core", "2.18.0"), true},
+	}
+	for _, tc := range tests {
+		crt := &share.CLUSAdmRuleCriterion{Name: share.CriteriaKeyModules, Op: tc.op, Value: tc.value, ValueSlice: strings.Split(tc.value, ",")}
+		if got, _ := isModulesCriterionMet(crt, tc.mods); got != tc.want {
+			t.Errorf("op=%s value=%q mods=%+v: got %v want %v", tc.op, tc.value, tc.mods, got, tc.want)
+		}
+	}
+	postTest()
+}
+
+func TestValidateModulesCriterionValue(t *testing.T) {
+	// single-bound values are not checked, as before (old rules must still import)
+	valid := []string{"vim", "vim=1.0", "vim=1.*", "vim>1.0", "vim<=1.0", "log4j<1.0 x", "log4j<", "<1.0", " log4j-core>=2.0.0<2.17.1 ", "a>1<2>0.5"}
+	invalid := []string{"log4j<2.0>", "log4j>=2.0.0<", "log4j>=2.0.0<1.0 x", "<1.0<2.0", "log4j>=1.0<2.0<"}
+	for _, v := range valid {
+		if err := ValidateModulesCriterionValue(v); err != nil {
+			t.Errorf("%q should be valid: %v", v, err)
+		}
+	}
+	for _, v := range invalid {
+		if err := ValidateModulesCriterionValue(v); err == nil {
+			t.Errorf("%q should be invalid", v)
+		}
+	}
+}
+
 func TestIsMapCriterionMet(t *testing.T) {
 	preTest()
 

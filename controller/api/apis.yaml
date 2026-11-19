@@ -2569,6 +2569,44 @@ paths:
           description: The sbom permission is missing
         "500":
           description: Failed to list the S3 storage
+  /v1/scan/component:
+    get:
+      tags:
+        - Scan
+      summary: Search a software component in scanned objects
+      description: Find a component in workloads, hosts, registry images and the images of running workloads. Requires the sbom permission. Only one search runs at a time. At least one of name and purl is required.
+      security:
+        - ApiKeyAuth: []
+        - TokenAuth: []
+      produces:
+        - application/json
+      parameters:
+        - in: query
+          name: name
+          description: Component name (case-insensitive, max 256 characters). It matches the component name and the name in the purl.
+          required: false
+          type: string
+        - in: query
+          name: purl
+          description: Package URL (max 512 characters). Without a version, all versions match.
+          required: false
+          type: string
+        - in: query
+          name: version
+          description: "Exact version, or comma-separated constraints that all must hold, for example '<2.17.1' or '>=1.0, <2.0'. Operators are =, ==, <, <=, >, >=. OS packages (deb, rpm, apk) and components without a purl use the dpkg comparison; other purl types use semantic versions, falling back to dpkg. Max 128 characters and 8 constraints."
+          required: false
+          type: string
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/RESTComponentSearchData"
+        "400":
+          description: Invalid query parameter
+        "403":
+          description: The sbom permission is missing
+        "429":
+          description: Another component search is running
   /v1/scan/scanner:
     get:
       tags:
@@ -9762,6 +9800,133 @@ definitions:
     properties:
       config:
         $ref: "#/definitions/RESTScanConfig"
+  RESTComponent:
+    type: object
+    required:
+      - name
+      - version
+      - purl
+    properties:
+      name:
+        type: string
+      version:
+        type: string
+      purl:
+        type: string
+  RESTComponentWorkload:
+    type: object
+    required:
+      - id
+      - name
+      - container
+      - domain
+      - image
+      - image_id
+      - components
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+        description: Pod name
+      container:
+        type: string
+        description: Container name
+      domain:
+        type: string
+      image:
+        type: string
+      image_id:
+        type: string
+      components:
+        type: array
+        items:
+          $ref: "#/definitions/RESTComponent"
+  RESTComponentHost:
+    type: object
+    required:
+      - id
+      - name
+      - components
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      components:
+        type: array
+        items:
+          $ref: "#/definitions/RESTComponent"
+  RESTComponentRegistryImage:
+    type: object
+    required:
+      - registry
+      - image_id
+      - digest
+      - images
+      - domain
+      - components
+    properties:
+      registry:
+        type: string
+      image_id:
+        type: string
+      digest:
+        type: string
+      images:
+        type: array
+        description: Sorted repository:tag names
+        items:
+          type: string
+      domain:
+        type: string
+      components:
+        type: array
+        items:
+          $ref: "#/definitions/RESTComponent"
+  RESTComponentRunningImage:
+    type: object
+    required:
+      - image_id
+      - image
+      - workloads
+      - components
+    properties:
+      image_id:
+        type: string
+      image:
+        type: string
+      workloads:
+        type: integer
+        description: Number of matching workloads that run the image
+      components:
+        type: array
+        items:
+          $ref: "#/definitions/RESTComponent"
+  RESTComponentSearchData:
+    type: object
+    required:
+      - workloads
+      - hosts
+      - images
+      - running_images
+    properties:
+      workloads:
+        type: array
+        items:
+          $ref: "#/definitions/RESTComponentWorkload"
+      hosts:
+        type: array
+        items:
+          $ref: "#/definitions/RESTComponentHost"
+      images:
+        type: array
+        items:
+          $ref: "#/definitions/RESTComponentRegistryImage"
+      running_images:
+        type: array
+        items:
+          $ref: "#/definitions/RESTComponentRunningImage"
   RESTScanImageSummaryData:
     type: object
     required:

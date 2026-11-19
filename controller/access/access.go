@@ -934,6 +934,7 @@ func CompileUriPermitsMapping() {
 			},
 			CONST_API_SBOM: {
 				"v1/scan/workload/*/sbom",
+				"v1/scan/component",
 				"v1/scan/image/*/sbom",
 				"v1/scan/host/*/sbom",
 				"v1/scan/registry/*/image/*/sbom",

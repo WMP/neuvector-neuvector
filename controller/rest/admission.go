@@ -111,6 +111,14 @@ func validateAdmCtrlCriteria(criteria []*share.CLUSAdmRuleCriterion, options map
 			}
 		}
 
+		if crt.Name == share.CriteriaKeyModules {
+			for _, value := range strings.Split(crt.Value, ",") {
+				if err := cache.ValidateModulesCriterionValue(value); err != nil {
+					return fmt.Errorf("Invalid criterion value: %s", err.Error())
+				}
+			}
+		}
+
 		if option, exist := options[crt.Name]; exist {
 			if len(option.Ops) == 0 {
 				allowedOp = true
