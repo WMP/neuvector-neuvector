@@ -2,7 +2,10 @@ package rest
 
 import (
 	"bytes"
+	"compress/gzip"
+	"context"
 	"errors"
+	"io"
 	"net/http"
 	"time"
 
@@ -14,6 +17,7 @@ import (
 	"github.com/neuvector/neuvector/controller/api"
 	"github.com/neuvector/neuvector/controller/common"
 	"github.com/neuvector/neuvector/controller/sbom"
+	"github.com/neuvector/neuvector/controller/sbom/s3store"
 	"github.com/neuvector/neuvector/share"
 	scanUtils "github.com/neuvector/neuvector/share/scan"
 )
@@ -55,6 +59,15 @@ func sbomRespond(w http.ResponseWriter, format string, meta sbom.Meta, modules [
 		return
 	}
 
+	sbomHeaders(w, format)
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(buf.Bytes()); err != nil {
+		log.WithFields(log.Fields{"error": err}).Debug("Write")
+	}
+	log.WithFields(log.Fields{"id": meta.ID, "format": format}).Debug("SBOM downloaded")
+}
+
+func sbomHeaders(w http.ResponseWriter, format string) {
 	ct, _ := sbom.ContentType(format)
 	filename := "sbom.cdx.json"
 	if format == sbom.FormatSPDX {
@@ -62,11 +75,40 @@ func sbomRespond(w http.ResponseWriter, format string, meta sbom.Meta, modules [
 	}
 	w.Header().Set("Content-Type", ct)
 	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(buf.Bytes()); err != nil {
-		log.WithFields(log.Fields{"error": err}).Debug("Write")
+}
+
+// sbomFromS3 sends the stored full CycloneDX document of a registry image. It returns false when the caller must build the document.
+func sbomFromS3(w http.ResponseWriter, r *http.Request, digest string, meta sbom.Meta) bool {
+	st := s3store.Current()
+	if st == nil || !s3store.ValidDigest(digest) {
+		return false
 	}
-	log.WithFields(log.Fields{"id": meta.ID, "format": format}).Debug("SBOM downloaded")
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+	rc, err := st.Open(ctx, digest)
+	if err != nil {
+		if errors.Is(err, s3store.ErrNotFound) {
+			log.WithFields(log.Fields{"digest": digest}).Debug("SBOM not in S3")
+		} else {
+			log.WithFields(log.Fields{"digest": digest, "error": err}).Warn("Failed to read SBOM from S3")
+		}
+		return false
+	}
+	defer rc.Close()
+	gz, err := gzip.NewReader(rc)
+	if err != nil {
+		log.WithFields(log.Fields{"digest": digest, "error": err}).Warn("Invalid SBOM in S3")
+		return false
+	}
+	defer gz.Close()
+
+	sbomHeaders(w, sbom.FormatCycloneDX)
+	w.WriteHeader(http.StatusOK)
+	if _, err := io.Copy(w, io.LimitReader(gz, 1<<30)); err != nil {
+		log.WithFields(log.Fields{"error": err}).Debug("Copy")
+	}
+	log.WithFields(log.Fields{"id": meta.ID, "format": sbom.FormatCycloneDX}).Debug("SBOM downloaded from S3")
+	return true
 }
 
 // sbomRespErr writes the error response; err.Error() is never sent to the client.
@@ -98,7 +140,7 @@ func imageScanModules(acc *access.AccessControl, imageID string) ([]*share.ScanM
 }
 
 // sbomWorkload serves the SBOM of the scanned workload id. For SourceImage the image scan is used when accessible.
-func sbomWorkload(w http.ResponseWriter, acc *access.AccessControl, login *loginSession, format, id, source, name string) {
+func sbomWorkload(w http.ResponseWriter, r *http.Request, acc *access.AccessControl, login *loginSession, format, id, source, name string) {
 	wl, err := cacher.GetWorkload(id, "", acc)
 	if err != nil || wl == nil {
 		sbomRespErr(w, login, err)
@@ -118,6 +160,9 @@ func sbomWorkload(w http.ResponseWriter, acc *access.AccessControl, login *login
 	if source == sbom.SourceImage && sum != nil { // the image scan is the image content
 		if sum.Digest != "" {
 			meta.Digest = sum.Digest
+		}
+		if format == sbom.FormatCycloneDX && sbomFromS3(w, r, sum.Digest, meta) {
+			return
 		}
 		sbomRespond(w, format, meta, imgModules, sum.BaseOS, nil)
 		return
@@ -143,7 +188,7 @@ func handlerScanWorkloadSBOM(w http.ResponseWriter, r *http.Request, ps httprout
 	if !ok {
 		return
 	}
-	sbomWorkload(w, acc, login, format, ps.ByName("id"), sbom.SourceContainer, "")
+	sbomWorkload(w, r, acc, login, format, ps.ByName("id"), sbom.SourceContainer, "")
 }
 
 func handlerScanImageSBOM(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -168,7 +213,7 @@ func handlerScanImageSBOM(w http.ResponseWriter, r *http.Request, ps httprouter.
 		restRespError(w, http.StatusNotFound, api.RESTErrObjectNotFound)
 		return
 	}
-	sbomWorkload(w, acc, login, format, brief.ID, sbom.SourceImage, brief.Image)
+	sbomWorkload(w, r, acc, login, format, brief.ID, sbom.SourceImage, brief.Image)
 }
 
 func handlerScanHostSBOM(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -223,5 +268,8 @@ func handlerRegistryImageSBOM(w http.ResponseWriter, r *http.Request, ps httprou
 		}
 	}
 	meta := sbom.Meta{Source: sbom.SourceImage, Name: name, ID: id, Digest: sum.Digest}
+	if format == sbom.FormatCycloneDX && sbomFromS3(w, r, sum.Digest, meta) {
+		return
+	}
 	sbomRespond(w, format, meta, modules, sum.BaseOS, nil)
 }

@@ -1911,6 +1911,9 @@ func StartRESTServer(isNewCluster, isLead bool, maxConcurrentRepoScanTasks, scan
 	r.DELETE("/v1/scan/registry/:name/scan", handlerRegistryStop)
 	r.GET("/v1/scan/registry/:name/image/:id", handlerRegistryImageReport)
 	r.GET("/v1/scan/registry/:name/image/:id/sbom", handlerRegistryImageSBOM)
+	r.GET("/v1/sbom/s3", handlerSBOMStorageGet)
+	r.PATCH("/v1/sbom/s3", handlerSBOMStorageConfig)
+	r.GET("/v1/sbom/s3/images", handlerSBOMStorageImages)
 	r.GET("/v1/scan/registry/:name/layers/:id", handlerRegistryLayersReport)
 	r.GET("/v1/scan/asset", handlerAssetVulnerability)      // skip API document
 	r.POST("/v1/vulasset", handlerVulAssetCreate)           // skip API document

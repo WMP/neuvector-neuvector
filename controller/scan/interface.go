@@ -32,6 +32,7 @@ type ScanInterface interface {
 	GetRegistryBenches(name string, tagMap map[string][]string, acc *access.AccessControl) (map[string][]*api.RESTBenchItem, map[string][]api.RESTIDName, error)
 	GetRegistryImageReport(name, id string, vpf scanUtils.VPFInterface, showTag string, tagMap map[string][]string, acc *access.AccessControl) (*api.RESTScanReport, error)
 	GetRegistryImageModules(name, id string, acc *access.AccessControl) ([]*share.ScanModule, *share.CLUSRegistryImageSummary, error)
+	GetRegistryImagesByDigest(digests map[string]bool, acc *access.AccessControl) []RegistryImageRef
 	GetRegistryLayersReport(name, id string, vpf scanUtils.VPFInterface, showTag string, acc *access.AccessControl) (*api.RESTScanLayersReport, error)
 	GetRegistryDebugImages(source string) []*api.RESTRegistryDebugImage
 	StartRegistry(name string) error

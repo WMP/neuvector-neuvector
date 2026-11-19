@@ -937,6 +937,8 @@ func CompileUriPermitsMapping() {
 				"v1/scan/image/*/sbom",
 				"v1/scan/host/*/sbom",
 				"v1/scan/registry/*/image/*/sbom",
+				"v1/sbom/s3",
+				"v1/sbom/s3/images",
 			},
 		}
 
@@ -1200,6 +1202,9 @@ func CompileUriPermitsMapping() {
 			},
 			CONST_API_VULNERABILITY: {
 				"v1/vulnerability/profile/*/entry/*",
+			},
+			CONST_API_SBOM: {
+				"v1/sbom/s3",
 			},
 		}
 
