@@ -2380,6 +2380,10 @@ func (m clusterHelper) DeleteRegistryImageSummaryAndReport(name, id, fedRole str
 // NeuVector modules and Vuls stay. report itself is not changed.
 func encodeScanReport(report *share.CLUSScanReport, limit int) ([]byte, error) {
 	encode := func(r *share.CLUSScanReport) ([]byte, error) {
+		// full SBOM lives in S3 only, never in the KV store
+		cr := *r
+		cr.FullSBOM, cr.FullSBOMFormat = nil, ""
+		r = &cr
 		var buf bytes.Buffer
 		if err := gob.NewEncoder(&buf).Encode(r); err != nil {
 			return nil, err

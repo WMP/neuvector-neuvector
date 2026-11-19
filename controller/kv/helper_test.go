@@ -131,3 +131,16 @@ func TestEncodeScanReport(t *testing.T) {
 		})
 	}
 }
+
+func TestEncodeScanReportDropsFullSBOM(t *testing.T) {
+	rpt := testReport()
+	rpt.FullSBOM, rpt.FullSBOMFormat = []byte("gz"), share.FullSBOMFormatCycloneDX
+	for _, limit := range []int{1 << 30, 1} { // plain and size-limited path
+		zb, err := encodeScanReport(rpt, limit)
+		require.NoError(t, err)
+		out := decodeReport(t, zb)
+		require.Nil(t, out.FullSBOM)
+		require.Empty(t, out.FullSBOMFormat)
+	}
+	require.NotNil(t, rpt.FullSBOM) // caller data untouched
+}

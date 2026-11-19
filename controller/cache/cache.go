@@ -288,6 +288,7 @@ func LeadChangeNotify(isLeader bool, leadAddr string) {
 	}
 
 	if !isLeader {
+		s3SweepReset()
 		return
 	}
 
@@ -2320,6 +2321,7 @@ func Init(ctx *Context, leader bool, leadAddr, restoredFedRole string) CacheInte
 	db.SetFillVulPackagesFunc(FillVulPackages)
 
 	go ProcReportBkgSvc()
+	go s3SweepLoop()
 	go FileReportBkgSvc()
 	return &cacher
 }

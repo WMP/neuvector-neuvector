@@ -16,6 +16,7 @@ import (
 
 	"github.com/neuvector/neuvector/controller/common"
 	"github.com/neuvector/neuvector/controller/rpc"
+	"github.com/neuvector/neuvector/controller/sbom/s3store"
 	"github.com/neuvector/neuvector/share"
 	scanUtils "github.com/neuvector/neuvector/share/scan"
 	"github.com/neuvector/neuvector/share/scan/registry"
@@ -539,6 +540,7 @@ func (r *jfrog) ScanImage(scanner string, ctx context.Context, id, digest, repo,
 		ScanLayers:         r.scanLayers,
 		ScanSecrets:        r.scanSecrets,
 		ScanTypesRequested: &scanTypesRequired,
+		IncludeFullSBOM:    s3store.Current() != nil,
 	}
 	result, err := rpc.ScanImage(scanner, ctx, req)
 	if result == nil {

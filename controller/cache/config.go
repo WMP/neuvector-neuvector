@@ -16,6 +16,7 @@ import (
 	"github.com/neuvector/neuvector/controller/api"
 	"github.com/neuvector/neuvector/controller/common"
 	"github.com/neuvector/neuvector/controller/rpc"
+	"github.com/neuvector/neuvector/controller/sbom/s3store"
 	"github.com/neuvector/neuvector/controller/scan"
 	"github.com/neuvector/neuvector/share"
 	"github.com/neuvector/neuvector/share/cluster"
@@ -611,6 +612,7 @@ func systemConfigUpdate(nType cluster.ClusterNotifyType, key string, value []byt
 		}, httpProxy, httpsProxy, ""); err != nil {
 			log.WithError(err).Warn("Failed to set default TLS client config")
 		}
+		s3store.Configure(&cfg)
 
 		go func() {
 			scannerConfigTimeout := DefaultScannerConfigUpdateTimeout
@@ -649,6 +651,7 @@ func systemConfigUpdate(nType cluster.ClusterNotifyType, key string, value []byt
 	case cluster.ClusterNotifyDelete:
 		// Triggered at configuration import
 		cfg = common.DefaultSystemConfig
+		s3store.Configure(&cfg)
 	}
 
 	// Only apply debug flags if they change so we can apply the initial debugCPath flag correctly.

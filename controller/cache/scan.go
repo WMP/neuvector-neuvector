@@ -983,6 +983,8 @@ func putScanReportToCluster(id string, info *scanInfo, result *share.ScanResult)
 
 	now := time.Now().UTC()
 	report := share.CLUSScanReport{ScannedAt: now, ScanResult: *result}
+	// full SBOM lives in S3 only, never in the KV store
+	report.FullSBOM, report.FullSBOMFormat = nil, ""
 
 	// Write full report and a piece of state data so we only need act upon the state data change notification
 	var buf bytes.Buffer
