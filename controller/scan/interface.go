@@ -30,6 +30,7 @@ type ScanInterface interface {
 	GetRegistryVulnerabilities(name string, vpf scanUtils.VPFInterface, showTag string, acc *access.AccessControl) (map[string][]*api.RESTVulnerability, map[string][]api.RESTIDName, error)
 	GetRegistryBenches(name string, tagMap map[string][]string, acc *access.AccessControl) (map[string][]*api.RESTBenchItem, map[string][]api.RESTIDName, error)
 	GetRegistryImageReport(name, id string, vpf scanUtils.VPFInterface, showTag string, tagMap map[string][]string, acc *access.AccessControl) (*api.RESTScanReport, error)
+	GetRegistryImageModules(name, id string, acc *access.AccessControl) ([]*share.ScanModule, *share.CLUSRegistryImageSummary, error)
 	GetRegistryLayersReport(name, id string, vpf scanUtils.VPFInterface, showTag string, acc *access.AccessControl) (*api.RESTScanLayersReport, error)
 	GetRegistryDebugImages(source string) []*api.RESTRegistryDebugImage
 	StartRegistry(name string) error
@@ -563,35 +564,51 @@ func (m *scanMethod) getAllRegistryImageReport(id string, vpf scanUtils.VPFInter
 	return nil, common.ErrObjectNotFound
 }
 
-func (m *scanMethod) GetRegistryImageReport(name, id string, vpf scanUtils.VPFInterface, showTag string, tagMap map[string][]string, acc *access.AccessControl) (*api.RESTScanReport, error) {
-	var rs *Registry
-	var ok bool
+// resolveRegistry finds the registry by name; it does not handle common.RegistryAllName.
+func resolveRegistry(name string, acc *access.AccessControl) (*Registry, error) {
+	if name == common.RegistryRepoScanName {
+		return repoScanRegistry, nil
+	} else if name == common.RegistryFedRepoScanName {
+		return repoFedScanRegistry, nil
+	} else if rs, ok := regMapLookup(name); ok {
+		return rs, nil
+	}
+	if !acc.Authorize(&share.CLUSRegistryConfig{Name: name}, nil) {
+		return nil, common.ErrObjectAccessDenied
+	}
+	return nil, common.ErrObjectNotFound
+}
 
+// authorizeRegistryImage checks access to the registry and the image. The caller must hold rs.stateLock.
+func authorizeRegistryImage(rs *Registry, id string, acc *access.AccessControl) (*share.CLUSRegistryImageSummary, error) {
+	if !acc.Authorize(rs.config, nil) {
+		return nil, common.ErrObjectAccessDenied
+	}
+	sum, ok := rs.summary[id]
+	if !ok {
+		return nil, common.ErrObjectNotFound
+	}
+	if !acc.Authorize(sum, func(s string) share.AccessObject { return rs.config }) {
+		return nil, common.ErrObjectAccessDenied
+	}
+	return sum, nil
+}
+
+func (m *scanMethod) GetRegistryImageReport(name, id string, vpf scanUtils.VPFInterface, showTag string, tagMap map[string][]string, acc *access.AccessControl) (*api.RESTScanReport, error) {
 	if name == common.RegistryAllName {
 		return m.getAllRegistryImageReport(id, vpf, showTag, tagMap, acc)
 	}
 
-	if name == common.RegistryRepoScanName {
-		rs = repoScanRegistry
-	} else if name == common.RegistryFedRepoScanName {
-		rs = repoFedScanRegistry
-	} else if rs, ok = regMapLookup(name); !ok {
-		if !acc.Authorize(&share.CLUSRegistryConfig{Name: name}, nil) {
-			return nil, common.ErrObjectAccessDenied
-		}
-		return nil, common.ErrObjectNotFound
+	rs, err := resolveRegistry(name, acc)
+	if err != nil {
+		return nil, err
 	}
-
-	var sum *share.CLUSRegistryImageSummary
 
 	rs.stateLock()
 	defer rs.stateUnlock()
-	if !acc.Authorize(rs.config, nil) {
-		return nil, common.ErrObjectAccessDenied
-	} else if sum, ok = rs.summary[id]; !ok {
-		return nil, common.ErrObjectNotFound
-	} else if !acc.Authorize(sum, func(s string) share.AccessObject { return rs.config }) {
-		return nil, common.ErrObjectAccessDenied
+	sum, err := authorizeRegistryImage(rs, id, acc)
+	if err != nil {
+		return nil, err
 	}
 
 	var rrpt api.RESTScanReport
@@ -645,6 +662,49 @@ func (m *scanMethod) GetRegistryImageReport(name, id string, vpf scanUtils.VPFIn
 	}
 
 	return &rrpt, nil
+}
+
+// GetRegistryImageModules returns the scan modules of a registry image and a copy of its summary.
+// It applies the same registry lookup and access checks as GetRegistryImageReport.
+func (m *scanMethod) GetRegistryImageModules(name, id string, acc *access.AccessControl) ([]*share.ScanModule, *share.CLUSRegistryImageSummary, error) {
+	names := []string{name}
+	if name == common.RegistryAllName {
+		names = []string{common.RegistryRepoScanName, common.RegistryFedRepoScanName}
+		for _, rs := range regMapToArray(true, true) {
+			names = append(names, rs.config.Name)
+		}
+	}
+
+	for _, n := range names {
+		rs, err := resolveRegistry(n, acc)
+		if err == nil {
+			var modules []*share.ScanModule
+			var sum *share.CLUSRegistryImageSummary
+			modules, sum, err = func() ([]*share.ScanModule, *share.CLUSRegistryImageSummary, error) {
+				rs.stateLock()
+				defer rs.stateUnlock()
+				sum, err := authorizeRegistryImage(rs, id, acc)
+				if err != nil {
+					return nil, nil, err
+				}
+				_, modules, err := db.GetVulnerabilityModule(id)
+				if err != nil {
+					return nil, nil, err
+				}
+				c := *sum
+				c.Images = append([]share.CLUSImage(nil), sum.Images...)
+				c.Verifiers = append([]string(nil), sum.Verifiers...)
+				return modules, &c, nil
+			}()
+			if err == nil {
+				return modules, sum, nil
+			}
+		}
+		if name != common.RegistryAllName {
+			return nil, nil, err
+		}
+	}
+	return nil, nil, common.ErrObjectNotFound
 }
 
 func (m *scanMethod) GetRegistryLayersReport(name, id string, vpf scanUtils.VPFInterface, showTag string, acc *access.AccessControl) (*api.RESTScanLayersReport, error) {

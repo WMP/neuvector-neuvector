@@ -1882,11 +1882,14 @@ func StartRESTServer(isNewCluster, isLead bool, maxConcurrentRepoScanTasks, scan
 	r.GET("/v1/scan/cache_data/:id", handlerScanCacheData)
 	r.POST("/v1/scan/workload/:id", handlerScanWorkloadReq)
 	r.GET("/v1/scan/workload/:id", handlerScanWorkloadReport)
+	r.GET("/v1/scan/workload/:id/sbom", handlerScanWorkloadSBOM)
 	r.POST("/v1/scan/workloads/scan_report", handlerWorkloadsScanReport) // Returns scan report of all queried workloads' scan result
 	r.GET("/v1/scan/image", handlerScanImageSummary)                     // Returns all workload's scan result summary by images
 	r.GET("/v1/scan/image/:id", handlerScanImageReport)                  // Returns workload scan result by workload's image ID
+	r.GET("/v1/scan/image/:id/sbom", handlerScanImageSBOM)
 	r.POST("/v1/scan/host/:id", handlerScanHostReq)
 	r.GET("/v1/scan/host/:id", handlerScanHostReport)
+	r.GET("/v1/scan/host/:id/sbom", handlerScanHostSBOM)
 	r.POST("/v1/scan/hosts/scan_report", handlerHostsScanReport) // Returns scan report of all queried hosts' scan result
 	r.POST("/v1/scan/platform/platform", handlerScanPlatformReq)
 	r.GET("/v1/scan/platform", handlerScanPlatformSummary)
@@ -1907,6 +1910,7 @@ func StartRESTServer(isNewCluster, isLead bool, maxConcurrentRepoScanTasks, scan
 	r.POST("/v1/scan/registry/:name/scan", handlerRegistryStart)
 	r.DELETE("/v1/scan/registry/:name/scan", handlerRegistryStop)
 	r.GET("/v1/scan/registry/:name/image/:id", handlerRegistryImageReport)
+	r.GET("/v1/scan/registry/:name/image/:id/sbom", handlerRegistryImageSBOM)
 	r.GET("/v1/scan/registry/:name/layers/:id", handlerRegistryLayersReport)
 	r.GET("/v1/scan/asset", handlerAssetVulnerability)      // skip API document
 	r.POST("/v1/vulasset", handlerVulAssetCreate)           // skip API document

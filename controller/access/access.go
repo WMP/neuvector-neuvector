@@ -53,6 +53,7 @@ const (
 	CONST_API_FED
 	CONST_API_PWD_PROFILE   // i.e. for password profile
 	CONST_API_VULNERABILITY // i.e. for vulnerability profile
+	CONST_API_SBOM
 )
 
 // apiCategoryID to permissions mapping
@@ -80,6 +81,7 @@ var apiPermissions map[int8]uint32 = map[int8]uint32{ // key is apiCategoryID
 	CONST_API_FED:             share.PERM_FED,
 	CONST_API_PWD_PROFILE:     share.PERMS_PWD_PROFILE,  // i.e. for password profile
 	CONST_API_VULNERABILITY:   share.PERM_VULNERABILITY, // i.e. for vulnerability profile
+	CONST_API_SBOM:            share.PERM_SBOM,
 	//CONST_API_CLOUD:         share.PERM_CLOUD,
 }
 
@@ -287,6 +289,13 @@ var PermissionOptions = []*api.RESTRolePermitOptionInternal{ // basic permission
 		ID:             share.PERM_VULNERABILITY_ID,
 		Value:          share.PERM_VULNERABILITY,
 		SupportScope:   CONST_PERM_SUPPORT_GLOBAL,
+		ReadSupported:  true,
+		WriteSupported: true,
+	},
+	{
+		ID:             share.PERM_SBOM_ID,
+		Value:          share.PERM_SBOM,
+		SupportScope:   CONST_PERM_SUPPORT_BOTH,
 		ReadSupported:  true,
 		WriteSupported: true,
 	},
@@ -920,6 +929,12 @@ func CompileUriPermitsMapping() {
 			CONST_API_VULNERABILITY: {
 				"v1/vulnerability/profile",
 				"v1/vulnerability/profile/*",
+			},
+			CONST_API_SBOM: {
+				"v1/scan/workload/*/sbom",
+				"v1/scan/image/*/sbom",
+				"v1/scan/host/*/sbom",
+				"v1/scan/registry/*/image/*/sbom",
 			},
 		}
 

@@ -788,3 +788,7 @@ func (m *MockCache) GetAllPwdProfiles() (string, map[string]share.CLUSPwdProfile
 func (m *MockCache) GetNvUsage(fedRole string) api.RESTNvUsage {
 	return api.RESTNvUsage{}
 }
+
+func (m *MockCache) GetScanModules(id string) ([]*share.ScanModule, string, error) {
+	return nil, "", nil
+}

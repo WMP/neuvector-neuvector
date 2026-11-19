@@ -2613,6 +2613,44 @@ paths:
       responses:
         "200":
           description: Success
+  /v1/scan/host/{id}/sbom:
+    get:
+      tags:
+        - Scan
+      summary: Get host SBOM
+      description: Download the software bill of materials (SBOM). Requires the sbom permission.
+      security:
+        - ApiKeyAuth: []
+        - TokenAuth: []
+      produces:
+        - application/vnd.cyclonedx+json
+        - application/spdx+json
+      parameters:
+        - in: path
+          name: id
+          description: Host ID
+          required: true
+          type: string
+        - in: query
+          name: format
+          description: SBOM format
+          required: false
+          type: string
+          enum:
+            - cyclonedx
+            - spdx
+          default: cyclonedx
+      responses:
+        "200":
+          description: Success. The content type is application/vnd.cyclonedx+json (CycloneDX 1.6 JSON) or application/spdx+json (SPDX 2.3 JSON).
+          schema:
+            type: object
+        "400":
+          description: Unsupported format
+        "403":
+          description: The sbom permission is missing
+        "404":
+          description: Object not found or not scanned
   /v1/scan/image:
     get:
       tags:
@@ -2649,6 +2687,44 @@ paths:
           description: Success
           schema:
             $ref: "#/definitions/RESTScanReportData"
+  /v1/scan/image/{id}/sbom:
+    get:
+      tags:
+        - Scan
+      summary: Get SBOM by workload's image ID
+      description: Download the software bill of materials (SBOM). Requires the sbom permission.
+      security:
+        - ApiKeyAuth: []
+        - TokenAuth: []
+      produces:
+        - application/vnd.cyclonedx+json
+        - application/spdx+json
+      parameters:
+        - in: path
+          name: id
+          description: Image id
+          required: true
+          type: string
+        - in: query
+          name: format
+          description: SBOM format
+          required: false
+          type: string
+          enum:
+            - cyclonedx
+            - spdx
+          default: cyclonedx
+      responses:
+        "200":
+          description: Success. The content type is application/vnd.cyclonedx+json (CycloneDX 1.6 JSON) or application/spdx+json (SPDX 2.3 JSON).
+          schema:
+            type: object
+        "400":
+          description: Unsupported format
+        "403":
+          description: The sbom permission is missing
+        "404":
+          description: Object not found or not scanned
   /v1/scan/platform:
     get:
       tags:
@@ -2885,6 +2961,49 @@ paths:
           description: Success
           schema:
             $ref: "#/definitions/RESTScanReportData"
+  /v1/scan/registry/{name}/image/{id}/sbom:
+    get:
+      tags:
+        - Scan
+      summary: Get registry image SBOM
+      description: Download the software bill of materials (SBOM). Requires the sbom permission.
+      security:
+        - ApiKeyAuth: []
+        - TokenAuth: []
+      produces:
+        - application/vnd.cyclonedx+json
+        - application/spdx+json
+      parameters:
+        - in: path
+          name: name
+          description: Name of the registry
+          required: true
+          type: string
+        - in: path
+          name: id
+          description: Image ID
+          required: true
+          type: string
+        - in: query
+          name: format
+          description: SBOM format
+          required: false
+          type: string
+          enum:
+            - cyclonedx
+            - spdx
+          default: cyclonedx
+      responses:
+        "200":
+          description: Success. The content type is application/vnd.cyclonedx+json (CycloneDX 1.6 JSON) or application/spdx+json (SPDX 2.3 JSON).
+          schema:
+            type: object
+        "400":
+          description: Unsupported format
+        "403":
+          description: The sbom permission is missing
+        "404":
+          description: Object not found or not scanned
   /v1/scan/registry/{name}/layers/{id}:
     get:
       tags:
@@ -3064,6 +3183,44 @@ paths:
       responses:
         "200":
           description: Success
+  /v1/scan/workload/{id}/sbom:
+    get:
+      tags:
+        - Scan
+      summary: Get container SBOM
+      description: Download the software bill of materials (SBOM). Requires the sbom permission.
+      security:
+        - ApiKeyAuth: []
+        - TokenAuth: []
+      produces:
+        - application/vnd.cyclonedx+json
+        - application/spdx+json
+      parameters:
+        - in: path
+          name: id
+          description: Workload ID
+          required: true
+          type: string
+        - in: query
+          name: format
+          description: SBOM format
+          required: false
+          type: string
+          enum:
+            - cyclonedx
+            - spdx
+          default: cyclonedx
+      responses:
+        "200":
+          description: Success. The content type is application/vnd.cyclonedx+json (CycloneDX 1.6 JSON) or application/spdx+json (SPDX 2.3 JSON).
+          schema:
+            type: object
+        "400":
+          description: Unsupported format
+        "403":
+          description: The sbom permission is missing
+        "404":
+          description: Object not found or not scanned
   /v1/scan/workloads/scan_report:
     post:
       tags:

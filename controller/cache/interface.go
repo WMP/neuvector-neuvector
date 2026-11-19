@@ -151,6 +151,7 @@ type CacheInterface interface {
 	GetScanStatus(acc *access.AccessControl) (*api.RESTScanStatus, error)
 	GetScanPlatformSummary(acc *access.AccessControl) (*api.RESTScanPlatformSummary, error)
 	GetVulnerabilityReport(id string, showTag string) ([]*api.RESTVulnerability, []*api.RESTScanModule, error)
+	GetScanModules(id string) ([]*share.ScanModule, string, error)
 
 	// Compliance
 	GetComplianceProfile(name string, acc *access.AccessControl) (*api.RESTComplianceProfile, map[string][]string, error)

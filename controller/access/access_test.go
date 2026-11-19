@@ -1778,6 +1778,7 @@ func TestGetUserPermissions(t *testing.T) {
 			{ID: share.PERM_AUTHORIZATION_ID, Read: true, Write: true},
 			{ID: share.PERM_SYSTEM_CONFIG_ID, Read: true, Write: true},
 			{ID: share.PERM_VULNERABILITY_ID, Read: true, Write: true},
+			{ID: share.PERM_SBOM_ID, Read: true, Write: true},
 			{ID: share.PERMS_RUNTIME_SCAN_ID, Read: true, Write: true},
 			{ID: share.PERMS_RUNTIME_POLICIES_ID, Read: true, Write: true},
 			{ID: share.PERMS_COMPLIANCE_ID, Read: true, Write: true},
@@ -1808,6 +1809,7 @@ func TestGetUserPermissions(t *testing.T) {
 			{ID: share.PERM_AUTHORIZATION_ID, Read: true},
 			{ID: share.PERM_SYSTEM_CONFIG_ID, Read: true},
 			{ID: share.PERM_VULNERABILITY_ID, Read: true},
+			{ID: share.PERM_SBOM_ID, Read: true},
 			{ID: share.PERMS_RUNTIME_SCAN_ID, Read: true},
 			{ID: share.PERMS_RUNTIME_POLICIES_ID, Read: true},
 			{ID: share.PERMS_COMPLIANCE_ID, Read: true},
@@ -1844,6 +1846,7 @@ func TestGetUserPermissions(t *testing.T) {
 			{ID: share.PERM_AUTHORIZATION_ID, Read: true, Write: true},
 			{ID: share.PERM_SYSTEM_CONFIG_ID, Read: true, Write: true},
 			{ID: share.PERM_VULNERABILITY_ID, Read: true, Write: true},
+			{ID: share.PERM_SBOM_ID, Read: true, Write: true},
 			{ID: share.PERMS_RUNTIME_SCAN_ID, Read: true, Write: true},
 			{ID: share.PERMS_RUNTIME_POLICIES_ID, Read: true, Write: true},
 			{ID: share.PERMS_COMPLIANCE_ID, Read: true, Write: true},
@@ -1882,6 +1885,7 @@ func TestGetUserPermissions(t *testing.T) {
 			{ID: share.PERM_AUTHORIZATION_ID, Read: true},
 			{ID: share.PERM_SYSTEM_CONFIG_ID, Read: true},
 			{ID: share.PERM_VULNERABILITY_ID, Read: true},
+			{ID: share.PERM_SBOM_ID, Read: true},
 			{ID: share.PERMS_RUNTIME_SCAN_ID, Read: true, Write: true},
 			{ID: share.PERMS_RUNTIME_POLICIES_ID, Read: true},
 			{ID: share.PERMS_COMPLIANCE_ID, Read: true},
@@ -1906,6 +1910,7 @@ func TestGetUserPermissions(t *testing.T) {
 			{ID: share.PERM_AUTHORIZATION_ID, Read: true},
 			{ID: share.PERM_SYSTEM_CONFIG_ID, Read: true},
 			{ID: share.PERM_VULNERABILITY_ID, Read: true},
+			{ID: share.PERM_SBOM_ID, Read: true},
 			{ID: share.PERMS_RUNTIME_SCAN_ID, Read: true},
 			{ID: share.PERMS_RUNTIME_POLICIES_ID, Read: true, Write: true},
 			{ID: share.PERMS_COMPLIANCE_ID, Read: true},
@@ -1935,6 +1940,7 @@ func TestGetUserPermissions(t *testing.T) {
 			{ID: share.PERM_AUTHORIZATION_ID, Read: true},
 			{ID: share.PERM_SYSTEM_CONFIG_ID, Read: true},
 			{ID: share.PERM_VULNERABILITY_ID, Read: true},
+			{ID: share.PERM_SBOM_ID, Read: true},
 			{ID: share.PERMS_RUNTIME_SCAN_ID, Read: true, Write: true},
 			{ID: share.PERMS_RUNTIME_POLICIES_ID, Read: true},
 			{ID: share.PERMS_COMPLIANCE_ID, Read: true},
@@ -1947,6 +1953,7 @@ func TestGetUserPermissions(t *testing.T) {
 				{ID: share.PERM_EVENTS_ID, Read: true},
 				{ID: share.PERM_AUTHORIZATION_ID, Read: true, Write: true},
 				{ID: share.PERM_SYSTEM_CONFIG_ID, Read: true},
+				{ID: share.PERM_SBOM_ID, Read: true, Write: true},
 				{ID: share.PERMS_RUNTIME_SCAN_ID, Read: true, Write: true},
 				{ID: share.PERMS_RUNTIME_POLICIES_ID, Read: true, Write: true},
 				{ID: share.PERMS_COMPLIANCE_ID, Read: true, Write: true},
@@ -1999,6 +2006,7 @@ func TestGetUserPermissions(t *testing.T) {
 			{ID: share.PERM_AUTHORIZATION_ID, Read: true},
 			{ID: share.PERM_SYSTEM_CONFIG_ID, Read: true},
 			{ID: share.PERM_VULNERABILITY_ID, Read: true},
+			{ID: share.PERM_SBOM_ID, Read: true},
 			{ID: share.PERMS_RUNTIME_SCAN_ID, Read: true, Write: true},
 			{ID: share.PERMS_RUNTIME_POLICIES_ID, Read: true},
 			{ID: share.PERMS_COMPLIANCE_ID, Read: true},
@@ -2046,6 +2054,7 @@ func TestGetUserPermissions(t *testing.T) {
 			{ID: share.PERM_AUTHORIZATION_ID, Read: true, Write: true},
 			{ID: share.PERM_SYSTEM_CONFIG_ID, Read: true, Write: true},
 			{ID: share.PERM_VULNERABILITY_ID, Read: true, Write: true},
+			{ID: share.PERM_SBOM_ID, Read: true, Write: true},
 			{ID: share.PERMS_RUNTIME_SCAN_ID, Read: true, Write: true},
 			{ID: share.PERMS_RUNTIME_POLICIES_ID, Read: true, Write: true},
 			{ID: share.PERMS_COMPLIANCE_ID, Read: true, Write: true},
@@ -2073,6 +2082,7 @@ func TestGetUserPermissions(t *testing.T) {
 			{ID: share.PERM_AUTHORIZATION_ID, Read: true},
 			{ID: share.PERM_SYSTEM_CONFIG_ID, Read: true},
 			{ID: share.PERM_VULNERABILITY_ID, Read: true},
+			{ID: share.PERM_SBOM_ID, Read: true},
 			{ID: share.PERMS_RUNTIME_SCAN_ID, Read: true},
 			{ID: share.PERMS_RUNTIME_POLICIES_ID, Read: true, Write: true},
 			{ID: share.PERMS_COMPLIANCE_ID, Read: true},
@@ -2080,6 +2090,42 @@ func TestGetUserPermissions(t *testing.T) {
 		}
 		testObj.checkPermissionsResult(gPermitsList, expectedGPermitsList, dPermitsList, expectedDPermitsList)
 	}
+
+	postTest()
+}
+
+func TestSBOMPermission(t *testing.T) {
+	preTest()
+
+	// the SBOM URIs need PERM_SBOM; the plain scan report URI is unchanged
+	uris := map[string]uint32{
+		"/v1/scan/workload/x/sbom":         share.PERM_SBOM,
+		"/v1/scan/image/x/sbom":            share.PERM_SBOM,
+		"/v1/scan/host/x/sbom":             share.PERM_SBOM,
+		"/v1/scan/registry/r/image/x/sbom": share.PERM_SBOM,
+		"/v1/scan/workload/x":              share.PERMS_RUNTIME_SCAN,
+		"/v1/scan/registry/r/image/x":      share.PERM_REG_SCAN,
+	}
+	for uri, expected := range uris {
+		r, _ := http.NewRequest(http.MethodGet, uri, nil)
+		_, perm := getRequiredPermissions(r)
+		require.Equal(t, expected, perm, uri)
+	}
+
+	// reserved roles: admin rw, reader r, ciops and none nothing; domain roles support it too
+	for _, c := range []struct {
+		role       string
+		read, writ bool
+	}{{api.UserRoleAdmin, true, true}, {api.UserRoleFedAdmin, true, true}, {api.UserRoleReader, true, false},
+		{api.UserRoleFedReader, true, false}, {api.UserRoleCIOps, false, false}, {api.UserRoleNone, false, false}} {
+		rp, wp := getRolePermitValues(c.role, AccessDomainGlobal)
+		require.Equal(t, c.read, rp&share.PERM_SBOM != 0, c.role)
+		require.Equal(t, c.writ, wp&share.PERM_SBOM != 0, c.role)
+	}
+	rp, wp := getRolePermitValues(api.UserRoleAdmin, "ns1")
+	require.True(t, rp&share.PERM_SBOM != 0 && wp&share.PERM_SBOM != 0)
+	rp, wp = getRolePermitValues(api.UserRoleReader, "ns1")
+	require.True(t, rp&share.PERM_SBOM != 0 && wp&share.PERM_SBOM == 0)
 
 	postTest()
 }
