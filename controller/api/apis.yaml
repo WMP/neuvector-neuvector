@@ -9659,7 +9659,7 @@ definitions:
         type: string
       prefix:
         type: string
-        description: Objects are stored as <prefix>/<cluster name>/images/<digest>.cdx.json.gz. Use a unique prefix per cluster when clusters share a bucket.
+        description: Objects are stored as <prefix>/<cluster name>/images/<digest>.cdx.json.gz. Use a unique prefix per cluster when clusters share a bucket. After a cluster rename (also at federation join) the old objects are no longer used or deleted.
       path_style:
         type: boolean
       access_key:

@@ -540,7 +540,7 @@ func (r *jfrog) ScanImage(scanner string, ctx context.Context, id, digest, repo,
 		ScanLayers:         r.scanLayers,
 		ScanSecrets:        r.scanSecrets,
 		ScanTypesRequested: &scanTypesRequired,
-		IncludeFullSBOM:    s3store.Current() != nil,
+		IncludeFullSBOM:    digest != "" && s3store.Current() != nil, // the object key is the registry digest
 	}
 	result, err := rpc.ScanImage(scanner, ctx, req)
 	if result == nil {

@@ -12,13 +12,15 @@ import (
 
 var sbomUploadSlots = make(chan struct{}, 4)
 
+const sbomUploadWait = 2 * time.Minute
+
 // takeFullSBOM drops the full SBOM from a registry scan result, so it never reaches the cluster store,
 // and returns its upload, or nil. digest is the registry summary digest: REST and the cleanup look it up.
 // S3 errors never fail a scan.
 func takeFullSBOM(result *share.ScanResult, digest string) func() {
 	data, format := result.FullSBOM, result.FullSBOMFormat
 	result.FullSBOM, result.FullSBOMFormat = nil, ""
-	if len(data) == 0 || result.Error != share.ScanErrorCode_ScanErrNone {
+	if len(data) == 0 || result.Error != share.ScanErrorCode_ScanErrNone || digest == "" {
 		return nil
 	}
 	st := s3store.Current()
@@ -37,10 +39,11 @@ func takeFullSBOM(result *share.ScanResult, digest string) func() {
 		return nil
 	}
 	return func() {
+		// a slow S3 must not pile up uploads in memory: wait for a slot, then give up
 		select {
 		case sbomUploadSlots <- struct{}{}:
 			defer func() { <-sbomUploadSlots }()
-		default: // a slow S3 must not pile up uploads in memory
+		case <-time.After(sbomUploadWait):
 			log.WithFields(log.Fields{"digest": digest}).Warn("sbom s3: too many uploads in progress, full SBOM dropped")
 			return
 		}

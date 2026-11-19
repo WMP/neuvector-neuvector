@@ -85,6 +85,13 @@ func sbomFromS3(w http.ResponseWriter, r *http.Request, digest string, meta sbom
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second) // a down S3 must not hold the fallback long
 	defer cancel()
+	select { // each download holds the object in memory
+	case sbomS3Downloads <- struct{}{}:
+		defer func() { <-sbomS3Downloads }()
+	case <-ctx.Done():
+		log.WithFields(log.Fields{"digest": digest}).Warn("Too many SBOM downloads from S3")
+		return false
+	}
 	rc, err := st.Open(ctx, digest)
 	if err != nil {
 		if errors.Is(err, s3store.ErrNotFound) {
@@ -117,6 +124,8 @@ func sbomFromS3(w http.ResponseWriter, r *http.Request, digest string, meta sbom
 	log.WithFields(log.Fields{"id": meta.ID, "format": sbom.FormatCycloneDX}).Debug("SBOM downloaded from S3")
 	return true
 }
+
+var sbomS3Downloads = make(chan struct{}, 4)
 
 const sbomS3MaxJSON = 256 << 20 // uncompressed; a full Syft document of 15 000 components is about 18 MB
 

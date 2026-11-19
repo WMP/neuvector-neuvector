@@ -31,7 +31,7 @@ const (
 	DefaultRegion       = "us-east-1"
 	DefaultGraceMinutes = 1440
 	MaxGraceMinutes     = 525600
-	MaxObjectSize       = 64 << 20 // gzip; the default gRPC message limit
+	MaxObjectSize       = 32 << 20 // gzip; the scanner leaves out a larger SBOM so the result stays below the gRPC limit
 
 	objSuffix = ".cdx.json.gz"
 )
@@ -182,7 +182,7 @@ func (s *Store) Put(ctx context.Context, digest string, gz []byte) error {
 		Bucket:      aws.String(s.bucket),
 		Key:         aws.String(key),
 		Body:        bytes.NewReader(gz),
-		ContentType: aws.String("application/json"),
+		ContentType: aws.String("application/gzip"),
 	})
 	if err != nil {
 		return fmt.Errorf("SBOM put failed: %w", err)
@@ -198,7 +198,7 @@ func (s *Store) Open(ctx context.Context, digest string) (io.ReadCloser, error) 
 	out, err := s.api.GetObjectWithContext(ctx, &s3.GetObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)})
 	if err != nil {
 		var ae awserr.RequestFailure
-		if errors.As(err, &ae) && (ae.StatusCode() == http.StatusNotFound || ae.Code() == s3.ErrCodeNoSuchKey) {
+		if errors.As(err, &ae) && (ae.Code() == s3.ErrCodeNoSuchKey || (ae.StatusCode() == http.StatusNotFound && ae.Code() != s3.ErrCodeNoSuchBucket)) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("SBOM get failed: %w", err)
