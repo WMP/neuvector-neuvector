@@ -4565,6 +4565,7 @@ type RESTDependencyTrackPreviewReq struct {
 type RESTDependencyTrackPreview struct {
 	ProjectName    string   `json:"project_name"`
 	ProjectVersion string   `json:"project_version"`
+	Parents        []string `json:"parents"`
 	Tags           []string `json:"tags"`
 	SkippedReason  string   `json:"skipped_reason,omitempty"`
 }

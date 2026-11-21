@@ -2,6 +2,7 @@ package dtrack
 
 import (
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/neuvector/neuvector/share"
@@ -11,7 +12,7 @@ var testVars = Vars{
 	Cluster: "c1", Namespace: "ns", ReplicaSet: "rs", Service: "svc", Pod: "pod-1",
 	Container: "ctr", Image: "img:1", Digest: "sha256:abc",
 	PodLabels: map[string]string{"app": "web", "a.b/c-d": "x"},
-	NsLabels:  map[string]string{"team": "core"},
+	NsLabels:  map[string]string{"team": "core", "field.cattle.io/projectId": "p-abc12"},
 }
 
 func TestRenderSymbols(t *testing.T) {
@@ -20,7 +21,7 @@ func TestRenderSymbols(t *testing.T) {
 		{"{pod}", "pod-1"}, {"{container}", "ctr"}, {"{image}", "img:1"}, {"{digest}", "sha256:abc"},
 		{"{pod.metadata.labels.app}", "web"}, {"{pod.metadata.labels.a.b/c-d}", "x"},
 		{"{namespace.metadata.labels.team}-{pod.metadata.labels.app}", "core-web"},
-		{"  {cluster}  ", "c1"},
+		{"  {cluster}  ", "c1"}, {"{rancher.project}", "p-abc12"},
 	}
 	for _, tt := range tests {
 		p, err := Render(share.CLUSDependencyTrack{ProjectName: tt.tpl}, testVars)
@@ -32,7 +33,7 @@ func TestRenderSymbols(t *testing.T) {
 
 func TestRenderDefaults(t *testing.T) {
 	p, err := Render(share.CLUSDependencyTrack{}, testVars)
-	if err != nil || p.Name != "c1/ns/rs/ctr" || p.Version != "sha256:abc" || len(p.Tags) != 0 {
+	if err != nil || p.Name != "c1/p-abc12/ns/rs/ctr" || p.Version != "sha256:abc" || len(p.Tags) != 0 {
 		t.Errorf("got %+v, %v", p, err)
 	}
 }
@@ -76,7 +77,7 @@ func TestRenderReplicaSetFallback(t *testing.T) {
 	b.ReplicaSet, b.Pod = "", "pod-b"
 	pa, err1 := Render(share.CLUSDependencyTrack{}, a)
 	pb, err2 := Render(share.CLUSDependencyTrack{}, b)
-	if err1 != nil || err2 != nil || pa.Name == pb.Name || pa.Name != "c1/ns/pod-a/ctr" {
+	if err1 != nil || err2 != nil || pa.Name == pb.Name || pa.Name != "c1/p-abc12/ns/pod-a/ctr" {
 		t.Errorf("%q %q %v %v", pa.Name, pb.Name, err1, err2)
 	}
 	r1, r2 := testVars, testVars
@@ -114,6 +115,7 @@ func TestValidateTemplates(t *testing.T) {
 		{"{foo}", "", nil}, {"", "{foo}", nil}, {"{pod.metadata.labels.}", "", nil},
 		{"{pod.metadata.labels.a b}", "", nil}, {"{cluster", "", nil}, {"cluster}", "", nil},
 		{"{{cluster}}", "", nil}, {"a\nb", "", nil}, {string(long), "", nil},
+		{"a//b", "", nil}, {"/a", "", nil}, {"a/", "", nil}, {"a/ /b", "", nil},
 		{"", "", []string{"a,b"}}, {"", "", []string{" "}}, {" ", "", nil}, {"", "  ", nil}, {"", "", []string{"{x}"}}, {"", "", many},
 	}
 	for _, b := range bad {
@@ -127,7 +129,52 @@ func TestValidateTemplates(t *testing.T) {
 	if err := ValidateTemplates("{cluster}-{namespace.metadata.labels.a_b/c}", "v{digest}", []string{"{image}", "x"}); err != nil {
 		t.Error(err)
 	}
+	if err := ValidateTemplates("{cluster}/{rancher.project}/{pod.metadata.labels.a.b/c}", "", nil); err != nil {
+		t.Error(err)
+	}
 	if err := ValidateTemplates("{foo}", "", nil); err == nil || err.Error() != `unknown symbol "{foo}" in project name` {
 		t.Errorf("message: %v", err)
+	}
+}
+
+func TestRenderLevels(t *testing.T) {
+	render := func(name string, v Vars) (Project, error) {
+		return Render(share.CLUSDependencyTrack{ProjectName: name}, v)
+	}
+	p, err := render(DefaultProjectName, testVars)
+	if err != nil || p.Name != "c1/p-abc12/ns/rs/ctr" || !slices.Equal(p.Parents, []string{"c1", "c1/p-abc12", "c1/p-abc12/ns", "c1/p-abc12/ns/rs"}) || p.Version != "sha256:abc" {
+		t.Errorf("all levels: %+v, %v", p, err)
+	}
+
+	v := testVars
+	v.NsLabels = nil
+	p, err = render(DefaultProjectName, v)
+	if err != nil || p.Name != "c1/ns/rs/ctr" || !slices.Equal(p.Parents, []string{"c1", "c1/ns", "c1/ns/rs"}) {
+		t.Errorf("no Rancher project: %+v, %v", p, err)
+	}
+
+	p, err = render("{pod.metadata.labels.a.b/c-d}/{container}", testVars)
+	if err != nil || p.Name != "x/ctr" || !slices.Equal(p.Parents, []string{"x"}) {
+		t.Errorf("slash in label key: %+v, %v", p, err)
+	}
+
+	p, err = render("{cluster}/{pod.metadata.labels.nope}/{container}", testVars)
+	if err != nil || p.Name != "c1/ctr" || !slices.Equal(p.Parents, []string{"c1"}) {
+		t.Errorf("empty middle symbol: %+v, %v", p, err)
+	}
+	if _, err = render("{cluster}/{pod.metadata.labels.nope}", testVars); !errors.Is(err, ErrEmptySymbol) {
+		t.Errorf("empty leaf symbol: %v", err)
+	}
+
+	v = testVars
+	v.ReplicaSet, v.Pod = "", "pod-a"
+	p, err = render("{cluster}/{replicaset}/{container}", v)
+	if err != nil || p.Name != "c1/pod-a/ctr" || !slices.Equal(p.Parents, []string{"c1", "c1/pod-a"}) {
+		t.Errorf("replicaset fallback: %+v, %v", p, err)
+	}
+
+	p, err = render("{cluster}-{container}", testVars)
+	if err != nil || p.Name != "c1-ctr" || p.Parents != nil {
+		t.Errorf("flat: %+v, %v", p, err)
 	}
 }

@@ -239,12 +239,24 @@ func TestDependencyTrackPreview(t *testing.T) {
 	}
 	// the pod is not known yet
 	st, p, raw = dtPreview(`{"workload_id":"wl3"}`, api.UserRoleAdmin, nil)
-	if st != http.StatusOK || p.SkippedReason != "pod not known yet" {
+	if st != http.StatusOK || p.SkippedReason != "pod or namespace not known yet" {
 		t.Errorf("unknown pod: status=%d body=%s", st, raw)
+	}
+
+	// nested projects: parents from the root, [] for a flat template
+	st, p, raw = dtPreview(`{"workload_id":"wl1","project_name":"{cluster}/{namespace}/{container}","project_version":"v"}`, api.UserRoleAdmin, nil)
+	if st != http.StatusOK || p.ProjectName != "c1/ns1/app" || len(p.Parents) != 2 || p.Parents[0] != "c1" || p.Parents[1] != "c1/ns1" {
+		t.Errorf("parents: status=%d body=%s", st, raw)
+	}
+	st, _, raw = dtPreview(`{"workload_id":"wl1","project_name":"{container}","project_version":"v"}`, api.UserRoleAdmin, nil)
+	if st != http.StatusOK || !strings.Contains(raw, `"parents":[]`) {
+		t.Errorf("parents must be an empty array: %s", raw)
 	}
 
 	// invalid requests
 	for _, b := range []string{
+		`{"workload_id":"wl1","project_name":"{cluster}//{container}"}`,
+		`{"workload_id":"wl1","project_name":"{cluster}/"}`,
 		`{"workload_id":"wl1","project_name":"{bogus}"}`,
 		`{"workload_id":"wl1","tags":["a,b"]}`,
 		`{"project_name":"x"}`,
