@@ -29,6 +29,8 @@ var fixedSymbols = map[string]func(Vars) string{
 	"container":  func(v Vars) string { return v.Container },
 	"image":      func(v Vars) string { return v.Image },
 	"digest":     func(v Vars) string { return v.Digest },
+
+	"rancher.project": func(v Vars) string { return v.NsLabels["field.cattle.io/projectId"] },
 }
 
 func validLabelKey(k string) bool {
@@ -90,6 +92,24 @@ func parseSymbols(tpl string) ([]string, error) {
 	return syms, nil
 }
 
+// splitLevels splits a project name template at "/" outside braces: a label key in braces may contain "/".
+func splitLevels(tpl string) []string {
+	var out []string
+	depth, start := 0, 0
+	for i, c := range tpl {
+		switch {
+		case c == '{':
+			depth++
+		case c == '}' && depth > 0:
+			depth--
+		case c == '/' && depth == 0:
+			out = append(out, tpl[start:i])
+			start = i + 1
+		}
+	}
+	return append(out, tpl[start:])
+}
+
 func symbolValue(s string, v Vars) string {
 	if f, ok := fixedSymbols[s]; ok {
 		return f(v)
@@ -108,6 +128,13 @@ func ValidateTemplates(name, version string, tags []string) error {
 		}
 		if _, err := parseSymbols(t.tpl); err != nil {
 			return fmt.Errorf("%s in %s", err, t.field)
+		}
+		if t.field == "project name" && t.tpl != "" {
+			for _, seg := range splitLevels(t.tpl) {
+				if strings.TrimSpace(seg) == "" {
+					return errors.New("empty level in project name")
+				}
+			}
 		}
 	}
 	if len(tags) > maxTags {
@@ -161,22 +188,44 @@ func Render(cfg share.CLUSDependencyTrack, v Vars) (Project, error) {
 	if nv.ReplicaSet == "" {
 		nv.ReplicaSet = v.Pod
 	}
-	for _, f := range []struct {
-		field, tpl string
-		out        *string
-	}{{"project name", cfg.ProjectName, &p.Name}, {"project version", cfg.ProjectVersion, &p.Version}} {
-		s, empty, err := expand(f.tpl, nv)
+	levels := splitLevels(cfg.ProjectName)
+	var kept []string
+	for i, seg := range levels {
+		last := i == len(levels)-1
+		s, empty, err := expand(seg, nv)
 		if err != nil {
-			return Project{}, fmt.Errorf("%s: %w", f.field, err)
+			return Project{}, fmt.Errorf("project name: %w", err)
+		}
+		if !last {
+			// a level without value (e.g. no Rancher project) is skipped
+			if empty == "" && s != "" {
+				kept = append(kept, s)
+			}
+			continue
 		}
 		if empty != "" {
-			return Project{}, fmt.Errorf("%w: {%s} in %s", ErrEmptySymbol, empty, f.field)
+			return Project{}, fmt.Errorf("%w: {%s} in project name", ErrEmptySymbol, empty)
 		}
 		if s == "" {
-			return Project{}, fmt.Errorf("%w: %s is empty", ErrEmptySymbol, f.field)
+			return Project{}, fmt.Errorf("%w: project name is empty", ErrEmptySymbol)
 		}
-		*f.out = s
+		for j := range kept {
+			p.Parents = append(p.Parents, strings.Join(kept[:j+1], "/"))
+		}
+		p.Name = strings.Join(append(kept, s), "/")
 	}
+
+	s, empty, err := expand(cfg.ProjectVersion, nv)
+	if err != nil {
+		return Project{}, fmt.Errorf("project version: %w", err)
+	}
+	if empty != "" {
+		return Project{}, fmt.Errorf("%w: {%s} in project version", ErrEmptySymbol, empty)
+	}
+	if s == "" {
+		return Project{}, fmt.Errorf("%w: project version is empty", ErrEmptySymbol)
+	}
+	p.Version = s
 
 	seen := map[string]bool{}
 	for _, t := range cfg.Tags {

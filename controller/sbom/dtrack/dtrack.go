@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	DefaultProjectName    = "{cluster}/{namespace}/{replicaset}/{container}"
+	DefaultProjectName    = "{cluster}/{rancher.project}/{namespace}/{replicaset}/{container}"
 	DefaultProjectVersion = "{digest}"
 	DefaultInactiveGrace  = 24 * 60 // minutes
 )
@@ -32,6 +32,7 @@ type Project struct {
 	Name    string
 	Version string
 	Tags    []string
+	Parents []string // names of the parent projects from the root, e.g. "c1", "c1/ns"; the parents have no version
 }
 
 // Key is the deduplication key: project name and version.

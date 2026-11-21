@@ -239,11 +239,12 @@ func handlerDependencyTrackPreview(w http.ResponseWriter, r *http.Request, ps ht
 		sbomRespErr(w, login, err)
 		return
 	}
-	resp := &api.RESTDependencyTrackPreview{Tags: []string{}}
+	resp := &api.RESTDependencyTrackPreview{Tags: []string{}, Parents: []string{}}
 	proj, err := cacher.DtrackPreview(req.WorkloadID, cfg)
 	switch {
 	case err == nil:
 		resp.ProjectName, resp.ProjectVersion = proj.Name, proj.Version
+		resp.Parents = append(resp.Parents, proj.Parents...)
 		resp.Tags = append(resp.Tags, proj.Tags...)
 	case errors.Is(err, cache.ErrDtrackPodUnknown), errors.Is(err, cache.ErrDtrackNotRunning), errors.Is(err, cache.ErrDtrackNotScanned), errors.Is(err, dtrack.ErrEmptySymbol):
 		resp.SkippedReason = err.Error()

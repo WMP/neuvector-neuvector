@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -29,6 +31,15 @@ type entry struct {
 	lastSeen time.Time
 	inactive bool
 	project  Project
+	// parentUUID is the direct parent of the leaf at the last upload; a change runs the leaf check again
+	parentUUID string
+}
+
+// parentEntry is a parent project that this uploader created or checked in DT.
+type parentEntry struct {
+	uuid       string
+	parentUUID string
+	depth      int // index in Project.Parents; deeper parents are deactivated first
 }
 
 type queued struct {
@@ -43,9 +54,10 @@ type Uploader struct {
 	queue chan queued
 
 	mu       sync.Mutex
-	uploaded map[string]*entry // only after a successful upload
-	pending  map[string]bool   // queued or waiting for a retry
-	gen      uint64            // Reset increments it; older items are ignored
+	uploaded map[string]*entry       // only after a successful upload
+	parents  map[string]*parentEntry // by parent project name; a hit needs no DT call
+	pending  map[string]bool         // queued or waiting for a retry
+	gen      uint64                  // Reset increments it; older items are ignored
 
 	// unexported so tests can change them
 	retryBase, retryMax time.Duration
@@ -58,6 +70,7 @@ func NewUploader(c *Client) *Uploader {
 		c:           c,
 		queue:       make(chan queued, queueSize),
 		uploaded:    map[string]*entry{},
+		parents:     map[string]*parentEntry{},
 		pending:     map[string]bool{},
 		retryBase:   30 * time.Second,
 		retryMax:    30 * time.Minute,
@@ -110,6 +123,7 @@ func (u *Uploader) Reset() {
 	defer u.mu.Unlock()
 	u.gen++
 	u.uploaded = map[string]*entry{}
+	u.parents = map[string]*parentEntry{}
 	u.pending = map[string]bool{}
 }
 
@@ -134,25 +148,33 @@ func (u *Uploader) process(ctx context.Context, q queued) {
 		bom = buf.Bytes()
 	}
 
-	// A project this uploader does not know (first upload, after a restart or Reset) or
-	// one it deactivated may be inactive in DT: activate it first. DT accepts the upload
-	// to an inactive project, but it would stay hidden. A missing project is not an error.
-	u.mu.Lock()
-	old := u.uploaded[key]
-	u.mu.Unlock()
+	// The parents come first (root first), so that the leaf is created or moved below an active parent.
+	pctx, cancel := context.WithTimeout(ctx, uploadTimeout)
+	parentUUID, err := u.ensureParents(pctx, q.gen, q.item.Project)
+	cancel()
+
+	// A project this uploader does not know (first upload, after a restart or Reset), one it deactivated
+	// or one with another parent than before (an existing flat project of an older version) may be inactive
+	// or have no parent in DT. DT accepts the upload to an inactive project, but it would stay hidden, and it
+	// sets the parent only for a project that it creates. A missing project is not an error.
 	stillInactive := false
-	if old == nil || old.inactive {
-		sctx, cancel := context.WithTimeout(ctx, uploadTimeout)
-		if serr := u.c.SetActive(sctx, q.item.Project.Name, q.item.Project.Version, true); serr != nil {
-			log.WithFields(fields).WithError(serr).Warn("dtrack: cannot activate project")
-			stillInactive = old != nil // the next Enqueue sends it again; an unknown project is not retried
+	if err == nil {
+		u.mu.Lock()
+		old := u.uploaded[key]
+		u.mu.Unlock()
+		if old == nil || old.inactive || old.parentUUID != parentUUID {
+			sctx, cancel := context.WithTimeout(ctx, uploadTimeout)
+			if serr := u.fixLeaf(sctx, q.item.Project, parentUUID); serr != nil {
+				log.WithFields(fields).WithError(serr).Warn("dtrack: cannot activate project")
+				stillInactive = old != nil // the next Enqueue sends it again; an unknown project is not retried
+			}
+			cancel()
 		}
+
+		uctx, cancel := context.WithTimeout(ctx, uploadTimeout)
+		err = u.c.Upload(uctx, q.item.Project, parentUUID, bom)
 		cancel()
 	}
-
-	uctx, cancel := context.WithTimeout(ctx, uploadTimeout)
-	err = u.c.Upload(uctx, q.item.Project, bom)
-	cancel()
 
 	switch {
 	case err == nil:
@@ -185,10 +207,69 @@ func (u *Uploader) process(ctx context.Context, q queued) {
 	// Success, too large or rejected: remember the digest. The same digest is not sent again.
 	u.mu.Lock()
 	if q.gen == u.gen {
-		u.uploaded[key] = &entry{digest: q.item.Digest, project: q.item.Project, lastSeen: u.now(), inactive: stillInactive}
+		u.uploaded[key] = &entry{digest: q.item.Digest, project: q.item.Project, lastSeen: u.now(), inactive: stillInactive, parentUUID: parentUUID}
 	}
 	u.mu.Unlock()
 	u.done(q, key)
+}
+
+// fixLeaf activates the leaf and moves it below parentUUID when it exists in DT.
+func (u *Uploader) fixLeaf(ctx context.Context, p Project, parentUUID string) error {
+	cur, err := u.c.lookup(ctx, p.Name, p.Version)
+	if err != nil || cur == nil {
+		return err // a missing leaf is created by the upload, with the parent
+	}
+	return u.syncProject(ctx, cur, parentUUID)
+}
+
+// syncProject sends one PATCH with the active flag and the parent, only for what differs.
+func (u *Uploader) syncProject(ctx context.Context, cur *dtProject, parentUUID string) error {
+	var active *bool
+	if !cur.Active {
+		active = new(bool)
+		*active = true
+	}
+	if parentUUID == cur.ParentUUID {
+		parentUUID = ""
+	}
+	if active == nil && parentUUID == "" {
+		return nil
+	}
+	return u.c.patch(ctx, cur.UUID, active, parentUUID)
+}
+
+// ensureParents makes sure that all parents of p exist, are active and have the right parent, root first.
+// It returns the UUID of the direct parent of the leaf ("" without parents). A cached parent needs no DT call.
+func (u *Uploader) ensureParents(ctx context.Context, gen uint64, p Project) (string, error) {
+	wanted := ""
+	for i, name := range p.Parents {
+		u.mu.Lock()
+		c := u.parents[name]
+		u.mu.Unlock()
+		if c != nil && c.parentUUID == wanted {
+			wanted = c.uuid
+			continue
+		}
+		cur, err := u.c.lookup(ctx, name, "") // no version: parents have none
+		var uuid string
+		switch {
+		case err != nil:
+		case cur == nil:
+			uuid, err = u.c.create(ctx, name, wanted)
+		default:
+			uuid, err = cur.UUID, u.syncProject(ctx, cur, wanted)
+		}
+		if err != nil {
+			return "", fmt.Errorf("parent project %q: %w", name, err)
+		}
+		u.mu.Lock()
+		if gen == u.gen {
+			u.parents[name] = &parentEntry{uuid: uuid, parentUUID: wanted, depth: i}
+		}
+		u.mu.Unlock()
+		wanted = uuid
+	}
+	return wanted, nil
 }
 
 // done clears the pending flag of the item (if its generation is current).
@@ -269,5 +350,53 @@ func (u *Uploader) Sweep(ctx context.Context, items []Item, grace time.Duration,
 		}
 		u.mu.Unlock()
 		log.WithFields(fields).Info("dtrack: project deactivated")
+	}
+	u.deactivateParents(ctx, gen)
+}
+
+// deactivateParents deactivates the cached parents that no live leaf has, deepest first, so that DT
+// accepts it (no active children). A parent that DT refuses (e.g. 409: it has active children that this
+// uploader does not know) is warned once and forgotten, not retried: a leaf uploaded below it checks it again.
+func (u *Uploader) deactivateParents(ctx context.Context, gen uint64) {
+	type cand struct {
+		name  string
+		depth int
+	}
+	var list []cand
+	u.mu.Lock()
+	live := map[string]bool{}
+	for _, e := range u.uploaded {
+		for _, n := range e.project.Parents {
+			live[n] = true
+		}
+	}
+	for n, pe := range u.parents {
+		if !live[n] {
+			list = append(list, cand{n, pe.depth})
+		}
+	}
+	u.mu.Unlock()
+	sort.Slice(list, func(i, j int) bool { return list[i].depth > list[j].depth })
+	for _, c := range list {
+		u.mu.Lock()
+		stale := gen != u.gen
+		u.mu.Unlock()
+		if stale || ctx.Err() != nil {
+			return
+		}
+		sctx, cancel := context.WithTimeout(ctx, uploadTimeout)
+		err := u.c.SetActive(sctx, c.name, "", false)
+		cancel()
+		fields := log.Fields{"project": c.name}
+		if err != nil {
+			log.WithFields(fields).WithError(err).Warn("dtrack: cannot deactivate parent project")
+		} else {
+			log.WithFields(fields).Info("dtrack: parent project deactivated")
+		}
+		u.mu.Lock()
+		if gen == u.gen {
+			delete(u.parents, c.name)
+		}
+		u.mu.Unlock()
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -44,8 +45,15 @@ func newFakeDTrack(t *testing.T) *fakeDTrack {
 			v := r.MultipartForm.Value
 			f.uploads = append(f.uploads, dtrackUpload{strings.Join(v["projectName"], ""), strings.Join(v["projectVersion"], ""), strings.Join(v["projectTags"], "")})
 			io.WriteString(w, `{"token":"t"}`)
+		case r.Method == http.MethodPut && r.URL.Path == "/api/v1/project": // parent project
+			w.WriteHeader(http.StatusCreated)
+			io.WriteString(w, `{"uuid":"u-1"}`)
 		case r.URL.Path == "/api/v1/project/lookup":
-			json.NewEncoder(w).Encode(map[string]any{"uuid": "u-1", "active": true})
+			if !r.URL.Query().Has("version") { // parents have no version: not found, so they are created
+				w.WriteHeader(404)
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]any{"uuid": "u-2", "active": true, "parent": map[string]any{"uuid": "u-1"}})
 		case r.Method == http.MethodPatch:
 			b, _ := io.ReadAll(r.Body)
 			f.patches = append(f.patches, string(b))
@@ -198,7 +206,7 @@ func TestDtrackLabelSymbols(t *testing.T) {
 func TestDtrackMissingLabelInName(t *testing.T) {
 	buf := dtrackEnv(t)
 	f := newFakeDTrack(t)
-	dtrackStart(f, func(dt *share.CLUSDependencyTrack) { dt.ProjectName = "{pod.metadata.labels.PRODUKT}/{container}" })
+	dtrackStart(f, func(dt *share.CLUSDependencyTrack) { dt.ProjectName = "{container}/{pod.metadata.labels.PRODUKT}" })
 	dtrackAddPod("w1", "ns", "pod-a", "rs", nil)
 	dtrackScanDone("w1")
 	time.Sleep(200 * time.Millisecond)
@@ -367,5 +375,23 @@ func TestDtrackPreview(t *testing.T) {
 	wlCacheMap["w1"].workload.Running = false
 	if _, err = m.DtrackPreview("w1", cfg); !errors.Is(err, ErrDtrackNotRunning) {
 		t.Errorf("stopped workload: err %v", err)
+	}
+}
+
+func TestDtrackPreviewRancherProject(t *testing.T) {
+	dtrackEnv(t)
+	dtrackAddPod("w1", "ns", "web-1", "web-rs", nil)
+	var m CacheMethod
+
+	p, err := m.DtrackPreview("w1", share.CLUSDependencyTrack{})
+	if err != nil || p.Name != "c1/ns/web-rs/app" || !slices.Equal(p.Parents, []string{"c1", "c1/ns", "c1/ns/web-rs"}) {
+		t.Errorf("no Rancher project: %+v err %v", p, err)
+	}
+
+	domainCacheMap["ns"] = &domainCache{domain: &share.CLUSDomain{Name: "ns", Labels: map[string]string{"field.cattle.io/projectId": "p-abc12"}}}
+	t.Cleanup(func() { delete(domainCacheMap, "ns") })
+	p, err = m.DtrackPreview("w1", share.CLUSDependencyTrack{})
+	if err != nil || p.Name != "c1/p-abc12/ns/web-rs/app" || len(p.Parents) != 4 || p.Parents[1] != "c1/p-abc12" {
+		t.Errorf("Rancher project: %+v err %v", p, err)
 	}
 }

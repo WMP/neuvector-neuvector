@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -22,22 +23,74 @@ type upload struct {
 	Key    string
 }
 
-// fakeDT records calls and answers like Dependency-Track.
+type fproj struct {
+	uuid, name, version, parent string // parent = parent uuid
+	active                      bool
+}
+
+// fakeDT keeps projects in memory and answers like Dependency-Track (rules from the DT source).
 type fakeDT struct {
 	*httptest.Server
 	mu          sync.Mutex
+	projects    map[string]*fproj // key: name \x00 version
+	seq         int
 	uploads     []upload
 	patches     []string // PATCH bodies
+	puts        []string // PUT bodies
+	calls       []string // "lookup name", "PUT name", "PATCH name", ... in order
 	lookups     int
 	bomStatuses []int // answers for the next uploads; 200 when empty
 	bomCalls    int
-	lookupCode  int  // 0 = 200
-	active      bool // active flag in the lookup answer
-	patchCode   int  // 0 = 200
+	lookupCode  int // 0 = normal
+	patchCode   int // 0 = normal
+}
+
+// add pre-creates a project and returns it.
+func (f *fakeDT) add(name, version string, active bool, parent string) *fproj {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.addLocked(name, version, active, parent)
+}
+
+func (f *fakeDT) addLocked(name, version string, active bool, parent string) *fproj {
+	f.seq++
+	p := &fproj{uuid: fmt.Sprintf("u-%d", f.seq), name: name, version: version, active: active, parent: parent}
+	f.projects[name+"\x00"+version] = p
+	return p
+}
+
+func (f *fakeDT) get(name, version string) *fproj {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.projects[name+"\x00"+version]
+}
+
+func (f *fakeDT) byUUID(uuid string) *fproj {
+	for _, p := range f.projects {
+		if p.uuid == uuid {
+			return p
+		}
+	}
+	return nil
+}
+
+func (f *fakeDT) activeChildren(uuid string) bool {
+	for _, p := range f.projects {
+		if p.parent == uuid && p.active {
+			return true
+		}
+	}
+	return false
+}
+
+func (f *fakeDT) callsString() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return strings.Join(f.calls, "; ")
 }
 
 func newFakeDT(t *testing.T) *fakeDT {
-	f := &fakeDT{active: true}
+	f := &fakeDT{projects: map[string]*fproj{}}
 	f.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
@@ -65,16 +118,67 @@ func newFakeDT(t *testing.T) *fakeDT {
 			fd, _ := fh.Open()
 			b, _ := io.ReadAll(fd)
 			u.BOM = string(b)
+			// parentUUID is used only when the project is auto-created; the parent must exist
+			name, version := u.Fields["projectName"], u.Fields["projectVersion"]
+			if f.projects[name+"\x00"+version] == nil && u.Fields["autoCreate"] == "true" {
+				pu := u.Fields["parentUUID"]
+				if pu != "" && f.byUUID(pu) == nil {
+					w.WriteHeader(404)
+					return
+				}
+				f.addLocked(name, version, true, pu)
+			}
+			f.calls = append(f.calls, "upload "+name)
 			f.uploads = append(f.uploads, u)
 			io.WriteString(w, `{"token":"t"}`)
-		case r.URL.Path == "/api/v1/project/lookup":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/project/lookup":
 			f.lookups++
+			q := r.URL.Query()
+			f.calls = append(f.calls, "lookup "+q.Get("name"))
 			if f.lookupCode != 0 {
 				w.WriteHeader(f.lookupCode)
 				return
 			}
-			json.NewEncoder(w).Encode(map[string]any{"uuid": "u-1", "active": f.active})
-		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/project/u-1":
+			// version absent = only projects without version
+			p := f.projects[q.Get("name")+"\x00"+q.Get("version")]
+			if p == nil || (!q.Has("version") && p.version != "") {
+				w.WriteHeader(404)
+				return
+			}
+			m := map[string]any{"uuid": p.uuid, "active": p.active}
+			if pp := f.byUUID(p.parent); pp != nil {
+				m["parent"] = map[string]any{"name": pp.name, "uuid": pp.uuid}
+			}
+			json.NewEncoder(w).Encode(m)
+		case r.Method == http.MethodPut && r.URL.Path == "/api/v1/project":
+			b, _ := io.ReadAll(r.Body)
+			f.puts = append(f.puts, string(b))
+			var m struct {
+				Name   string
+				Active bool
+				Parent *struct{ UUID string }
+			}
+			json.Unmarshal(b, &m)
+			f.calls = append(f.calls, "PUT "+m.Name)
+			pu := ""
+			if m.Parent != nil {
+				pu = m.Parent.UUID
+				if pp := f.byUUID(pu); pp == nil {
+					w.WriteHeader(404)
+					return
+				} else if !pp.active {
+					w.WriteHeader(409)
+					return
+				}
+			}
+			if f.projects[m.Name+"\x00"] != nil {
+				w.WriteHeader(409)
+				return
+			}
+			p := f.addLocked(m.Name, "", m.Active, pu)
+			w.WriteHeader(201)
+			json.NewEncoder(w).Encode(map[string]any{"uuid": p.uuid})
+		case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/api/v1/project/"):
 			b, _ := io.ReadAll(r.Body)
 			f.patches = append(f.patches, string(b))
 			if r.Header.Get("Content-Type") != "application/json" {
@@ -85,9 +189,38 @@ func newFakeDT(t *testing.T) *fakeDT {
 				w.WriteHeader(f.patchCode)
 				return
 			}
-			var m map[string]bool
+			p := f.byUUID(strings.TrimPrefix(r.URL.Path, "/api/v1/project/"))
+			if p == nil {
+				w.WriteHeader(404)
+				return
+			}
+			f.calls = append(f.calls, "PATCH "+p.name)
+			var m struct {
+				Active *bool
+				Parent *struct{ UUID string }
+			}
 			json.Unmarshal(b, &m)
-			f.active = m["active"]
+			newParent := p.parent
+			if m.Parent != nil {
+				newParent = m.Parent.UUID
+				if pp := f.byUUID(newParent); pp == nil {
+					w.WriteHeader(404)
+					return
+				}
+			}
+			active := p.active
+			if m.Active != nil {
+				active = *m.Active
+			}
+			if pp := f.byUUID(newParent); active && pp != nil && !pp.active {
+				w.WriteHeader(409) // an inactive project cannot be a parent
+				return
+			}
+			if !active && f.activeChildren(p.uuid) {
+				w.WriteHeader(409)
+				return
+			}
+			p.active, p.parent = active, newParent
 		default:
 			w.WriteHeader(404)
 		}
@@ -133,7 +266,7 @@ func (s *safeBuf) String() string              { s.mu.Lock(); defer s.mu.Unlock(
 func TestUploadFields(t *testing.T) {
 	f := newFakeDT(t)
 	p := Project{Name: "c/ns/rs/app", Version: "sha256:abc", Tags: []string{"a", "b"}}
-	if err := f.client().Upload(t.Context(), p, []byte(`{"x": 1}`)); err != nil {
+	if err := f.client().Upload(t.Context(), p, "", []byte(`{"x": 1}`)); err != nil {
 		t.Fatal(err)
 	}
 	u := f.uploads[0]
@@ -148,9 +281,16 @@ func TestUploadFields(t *testing.T) {
 		t.Errorf("key %q bom %q", u.Key, u.BOM)
 	}
 
+	if _, ok := u.Fields["parentUUID"]; ok {
+		t.Error("parentUUID sent without parent")
+	}
+	if err := f.client().Upload(t.Context(), Project{Name: "new", Version: "v"}, "pu-1", []byte(`{}`)); err == nil {
+		t.Error("unknown parent must fail with 404")
+	}
+
 	p.Tags = nil
 	f.uploads = nil
-	if err := f.client().Upload(t.Context(), p, []byte(`{}`)); err != nil {
+	if err := f.client().Upload(t.Context(), p, "", []byte(`{}`)); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := f.uploads[0].Fields["projectTags"]; ok {
@@ -162,18 +302,18 @@ func TestUploadErrors(t *testing.T) {
 	captureLogs(t)
 	f := newFakeDT(t)
 	f.bomStatuses = []int{413, 500}
-	err := f.client().Upload(t.Context(), Project{Name: "n", Version: "v"}, []byte("12345"))
+	err := f.client().Upload(t.Context(), Project{Name: "n", Version: "v"}, "", []byte("12345"))
 	if !errors.Is(err, ErrTooLarge) || !strings.Contains(err.Error(), "413") ||
 		!strings.Contains(err.Error(), "proxy-body-size") || !strings.Contains(err.Error(), "5 bytes") {
 		t.Errorf("413 error: %v", err)
 	}
-	err = f.client().Upload(t.Context(), Project{Name: "n", Version: "v"}, []byte("x"))
+	err = f.client().Upload(t.Context(), Project{Name: "n", Version: "v"}, "", []byte("x"))
 	if err == nil || errors.Is(err, ErrTooLarge) || !strings.Contains(err.Error(), "500") {
 		t.Errorf("500 error: %v", err)
 	}
 	// connection error: no key in the text
 	f.Close()
-	err = f.client().Upload(t.Context(), Project{Name: "n", Version: "v"}, []byte("x"))
+	err = f.client().Upload(t.Context(), Project{Name: "n", Version: "v"}, "", []byte("x"))
 	if err == nil || strings.Contains(err.Error(), testKey) {
 		t.Errorf("conn error: %v", err)
 	}
@@ -184,13 +324,10 @@ func TestSetActive(t *testing.T) {
 	c := f.client()
 	ctx := t.Context()
 
-	f.lookupCode = 404
 	if err := c.SetActive(ctx, "n", "v", false); err != nil || len(f.patches) != 0 {
 		t.Errorf("404: err %v patches %v", err, f.patches)
 	}
-	f.lookupCode = 0
-
-	f.active = false
+	f.add("n", "v", false, "")
 	if err := c.SetActive(ctx, "n", "v", false); err != nil || len(f.patches) != 0 {
 		t.Errorf("already inactive: err %v patches %v", err, f.patches)
 	}
@@ -225,10 +362,44 @@ func TestNoRedirect(t *testing.T) {
 	}))
 	defer dt.Close()
 	c := &Client{URL: dt.URL, APIKey: testKey, HTTP: dt.Client()}
-	if err := c.Upload(t.Context(), Project{Name: "n", Version: "v"}, []byte("{}")); err == nil {
+	if err := c.Upload(t.Context(), Project{Name: "n", Version: "v"}, "", []byte("{}")); err == nil {
 		t.Fatal("redirect must fail the upload")
 	}
 	if leaked {
 		t.Fatal("API key sent to the redirect target")
+	}
+}
+
+func TestLookupWithoutVersionAndCreateConflict(t *testing.T) {
+	f := newFakeDT(t)
+	c := f.client()
+	ctx := t.Context()
+	f.add("n", "v1", true, "")
+	if p, err := c.lookup(ctx, "n", ""); err != nil || p != nil {
+		t.Errorf("a project with version must not match without version: %v %v", p, err)
+	}
+	root, err := c.create(ctx, "n", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p, err := c.lookup(ctx, "n", ""); err != nil || p == nil || p.UUID != root {
+		t.Errorf("lookup: %v %v", p, err)
+	}
+	if got, err := c.create(ctx, "n", ""); err != nil || got != root { // 409, then lookup
+		t.Errorf("create again: %q %v", got, err)
+	}
+	child, err := c.create(ctx, "child", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := c.lookup(ctx, "child", ""); p == nil || p.ParentUUID != root {
+		t.Errorf("parent: %v", p)
+	}
+	f.get("n", "").active = false
+	if _, err := c.create(ctx, "child2", root); !errors.Is(err, errRejected) {
+		t.Errorf("inactive parent: %v", err)
+	}
+	if err := c.patch(ctx, child, nil, "nope"); !errors.Is(err, errRejected) {
+		t.Errorf("unknown parent: %v", err)
 	}
 }
