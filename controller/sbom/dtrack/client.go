@@ -63,6 +63,9 @@ func (c *Client) do(req *http.Request) (int, []byte, error) {
 // errRejected marks a client error (4xx except 408 and 429): a retry gives the same answer.
 var errRejected = errors.New("rejected by Dependency-Track")
 
+// errNotFound marks HTTP 404 (also errRejected).
+var errNotFound = errors.New("not found in Dependency-Track")
+
 func statusErr(what string, code int, body []byte) error {
 	if len(body) > 200 {
 		body = body[:200]
@@ -70,6 +73,9 @@ func statusErr(what string, code int, body []byte) error {
 	err := fmt.Errorf("%s: HTTP %d: %s", what, code, bytes.TrimSpace(body))
 	if code >= 400 && code < 500 && code != http.StatusRequestTimeout && code != http.StatusTooManyRequests {
 		err = fmt.Errorf("%w: %w", errRejected, err)
+	}
+	if code == http.StatusNotFound {
+		err = fmt.Errorf("%w: %w", errNotFound, err)
 	}
 	return err
 }
@@ -175,38 +181,39 @@ func (c *Client) lookup(ctx context.Context, name, version string) (*dtProject, 
 
 // create makes an active project without version and returns its UUID. When DT answers 409
 // (another request created it first) the project is looked up.
-func (c *Client) create(ctx context.Context, name, parentUUID string) (string, error) {
+// create returns the new project, or on 409 (created meanwhile) the existing one as it is in DT.
+func (c *Client) create(ctx context.Context, name, parentUUID string) (*dtProject, error) {
 	m := map[string]any{"name": name, "active": true}
 	if parentUUID != "" {
 		m["parent"] = map[string]string{"uuid": parentUUID}
 	}
 	data, err := json.Marshal(m)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.URL+"/api/v1/project", bytes.NewReader(data))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	code, body, err := c.do(req)
 	switch {
 	case err != nil:
-		return "", fmt.Errorf("create project: %w", err)
+		return nil, fmt.Errorf("create project: %w", err)
 	case code == http.StatusOK || code == http.StatusCreated:
 		var proj struct {
 			UUID string `json:"uuid"`
 		}
 		if err := json.Unmarshal(body, &proj); err != nil || proj.UUID == "" {
-			return "", fmt.Errorf("create project: bad answer")
+			return nil, fmt.Errorf("create project: bad answer")
 		}
-		return proj.UUID, nil
+		return &dtProject{UUID: proj.UUID, Active: true, ParentUUID: parentUUID}, nil
 	case code == http.StatusConflict:
 		if p, lerr := c.lookup(ctx, name, ""); lerr == nil && p != nil {
-			return p.UUID, nil
+			return p, nil
 		}
 	}
-	return "", statusErr("create project", code, body)
+	return nil, statusErr("create project", code, body)
 }
 
 // patch changes the active flag (when not nil) and the parent (when not empty) of a project.

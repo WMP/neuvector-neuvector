@@ -443,3 +443,31 @@ func TestRestartWithParentsNoPatch(t *testing.T) {
 		t.Errorf("calls: %v", f.calls)
 	}
 }
+
+func TestParentRefusedUploadsWithoutParent(t *testing.T) {
+	captureLogs(t)
+	f := newFakeDT(t)
+	f.putCode = http.StatusForbidden // key without PORTFOLIO_MANAGEMENT
+	u := newTestUploader(t, f)
+	u.Enqueue(deep(chain, "c/ns/a", "d1"))
+	waitFor(t, "upload", func() bool { n, _ := f.counts(); return n == 1 && u.idle() })
+	if got := f.uploads[0].Fields["parentUUID"]; got != "" {
+		t.Errorf("parentUUID %q, want none", got)
+	}
+}
+
+func TestDeletedParentCreatedAgain(t *testing.T) {
+	captureLogs(t)
+	f := newFakeDT(t)
+	u := newTestUploader(t, f)
+	u.Enqueue(deep(chain, "c/ns/a", "d1"))
+	waitFor(t, "first upload", func() bool { n, _ := f.counts(); return n == 1 && u.idle() })
+	f.mu.Lock()
+	delete(f.projects, "c/ns\x00") // deleted in the DT UI; the uploader still caches its UUID
+	f.mu.Unlock()
+	u.Enqueue(deep(chain, "c/ns/b", "d1"))
+	waitFor(t, "second upload", func() bool { n, _ := f.counts(); return n == 2 && u.idle() })
+	if got := f.parentOf("c/ns/b", "v1"); got != "c/ns" {
+		t.Errorf("parent of c/ns/b = %q", got)
+	}
+}

@@ -43,6 +43,7 @@ type fakeDT struct {
 	bomCalls    int
 	lookupCode  int // 0 = normal
 	patchCode   int // 0 = normal
+	putCode     int // 0 = normal
 }
 
 // add pre-creates a project and returns it.
@@ -160,6 +161,10 @@ func newFakeDT(t *testing.T) *fakeDT {
 			}
 			json.Unmarshal(b, &m)
 			f.calls = append(f.calls, "PUT "+m.Name)
+			if f.putCode != 0 {
+				w.WriteHeader(f.putCode)
+				return
+			}
 			pu := ""
 			if m.Parent != nil {
 				pu = m.Parent.UUID
@@ -378,20 +383,22 @@ func TestLookupWithoutVersionAndCreateConflict(t *testing.T) {
 	if p, err := c.lookup(ctx, "n", ""); err != nil || p != nil {
 		t.Errorf("a project with version must not match without version: %v %v", p, err)
 	}
-	root, err := c.create(ctx, "n", "")
+	rootP, err := c.create(ctx, "n", "")
 	if err != nil {
 		t.Fatal(err)
 	}
+	root := rootP.UUID
 	if p, err := c.lookup(ctx, "n", ""); err != nil || p == nil || p.UUID != root {
 		t.Errorf("lookup: %v %v", p, err)
 	}
-	if got, err := c.create(ctx, "n", ""); err != nil || got != root { // 409, then lookup
-		t.Errorf("create again: %q %v", got, err)
+	if got, err := c.create(ctx, "n", ""); err != nil || got.UUID != root { // 409, then lookup
+		t.Errorf("create again: %v %v", got, err)
 	}
-	child, err := c.create(ctx, "child", root)
+	childP, err := c.create(ctx, "child", root)
 	if err != nil {
 		t.Fatal(err)
 	}
+	child := childP.UUID
 	if p, _ := c.lookup(ctx, "child", ""); p == nil || p.ParentUUID != root {
 		t.Errorf("parent: %v", p)
 	}

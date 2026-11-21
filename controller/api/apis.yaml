@@ -12181,7 +12181,7 @@ definitions:
         description: Absent keeps the stored key, an empty string clears it
       project_name:
         type: string
-        description: "Template. Symbols are {cluster}, {rancher.project} (label field.cattle.io/projectId of the namespace), {namespace}, {replicaset}, {service}, {pod}, {container}, {image}, {digest}, {pod.metadata.labels.KEY} and {namespace.metadata.labels.KEY}. A \"/\" outside braces separates the levels of nested projects; the name of each level is the full path to it, and only the last level has the version and tags. A level that has an empty symbol is skipped, except the last level. An empty level (for example a//b) is rejected with status 400. An empty value means the default {cluster}/{rancher.project}/{namespace}/{replicaset}/{container}."
+        description: "Template. Symbols are {cluster}, {rancher.project} (label field.cattle.io/projectId of the namespace), {namespace}, {replicaset}, {service}, {pod}, {container}, {image}, {digest}, {pod.metadata.labels.KEY} and {namespace.metadata.labels.KEY}. A \"/\" outside braces separates the levels of nested projects; the name of each level is the full path to it, and only the last level has the version and tags. A level that has an empty symbol is skipped, except the last level, so keep a unique symbol (for example {container} with {replicaset}) in the last levels: workloads whose path becomes equal share one project. An empty level (for example a//b) is rejected with status 400. An empty value means the default {cluster}/{rancher.project}/{namespace}/{replicaset}/{container}."
       project_version:
         type: string
         description: Template, same symbols as project_name. An empty value means the default.
