@@ -1681,6 +1681,12 @@ func (m CacheMethod) GetScanModules(id string) ([]*share.ScanModule, string, err
 	if err != nil {
 		return nil, "", err
 	}
+	scanMutexRLock()
+	_, ok = scanMap[id]
+	scanMutexRUnlock()
+	if !ok { // removed during the db read: its row is gone and the modules would be empty
+		return nil, "", common.ErrObjectNotFound
+	}
 	return modules, baseOS, nil
 }
 
