@@ -454,6 +454,17 @@ func TestParentRefusedUploadsWithoutParent(t *testing.T) {
 	if got := f.uploads[0].Fields["parentUUID"]; got != "" {
 		t.Errorf("parentUUID %q, want none", got)
 	}
+	// the refusal is remembered: the next leaf makes no parent calls
+	f.mu.Lock()
+	puts := len(f.puts)
+	f.mu.Unlock()
+	u.Enqueue(deep(chain, "c/ns/b", "d1"))
+	waitFor(t, "second upload", func() bool { n, _ := f.counts(); return n == 2 && u.idle() })
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.puts) != puts {
+		t.Errorf("parent calls after a 403: %v", f.puts)
+	}
 }
 
 func TestDeletedParentCreatedAgain(t *testing.T) {

@@ -63,8 +63,9 @@ func (c *Client) do(req *http.Request) (int, []byte, error) {
 // errRejected marks a client error (4xx except 408 and 429): a retry gives the same answer.
 var errRejected = errors.New("rejected by Dependency-Track")
 
-// errNotFound marks HTTP 404 (also errRejected).
+// errNotFound marks HTTP 404 and errDenied HTTP 401/403 (both are also errRejected).
 var errNotFound = errors.New("not found in Dependency-Track")
+var errDenied = errors.New("permission denied by Dependency-Track")
 
 func statusErr(what string, code int, body []byte) error {
 	if len(body) > 200 {
@@ -74,8 +75,11 @@ func statusErr(what string, code int, body []byte) error {
 	if code >= 400 && code < 500 && code != http.StatusRequestTimeout && code != http.StatusTooManyRequests {
 		err = fmt.Errorf("%w: %w", errRejected, err)
 	}
-	if code == http.StatusNotFound {
+	switch code {
+	case http.StatusNotFound:
 		err = fmt.Errorf("%w: %w", errNotFound, err)
+	case http.StatusUnauthorized, http.StatusForbidden:
+		err = fmt.Errorf("%w: %w", errDenied, err)
 	}
 	return err
 }

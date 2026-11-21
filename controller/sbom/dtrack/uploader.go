@@ -44,9 +44,10 @@ type parentEntry struct {
 }
 
 type queued struct {
-	item    Item
-	attempt int
-	gen     uint64
+	item      Item
+	attempt   int
+	gen       uint64
+	rechecked bool // the parents were checked in DT again after a 404 (once per item)
 }
 
 // Uploader sends SBOMs to DT with one worker. It runs on the cluster leader only.
@@ -59,6 +60,8 @@ type Uploader struct {
 	parents  map[string]*parentEntry // by parent project name; a hit needs no DT call
 	pending  map[string][]string     // queued or waiting for a retry: key -> parents (they stay active)
 	gen      uint64                  // Reset increments it; older items are ignored
+	// noParents: DT refused the parent calls (401/403, a key without PORTFOLIO_MANAGEMENT): upload flat until Reset
+	noParents bool
 
 	// unexported so tests can change them
 	retryBase, retryMax time.Duration
@@ -126,6 +129,7 @@ func (u *Uploader) Reset() {
 	u.uploaded = map[string]*entry{}
 	u.parents = map[string]*parentEntry{}
 	u.pending = map[string][]string{}
+	u.noParents = false
 }
 
 func (u *Uploader) process(ctx context.Context, q queued) {
@@ -150,16 +154,29 @@ func (u *Uploader) process(ctx context.Context, q queued) {
 	}
 
 	// The parents come first (root first), so that the leaf is created or moved below an active parent.
-	pctx, cancel := context.WithTimeout(ctx, uploadTimeout)
-	parentUUID, err := u.ensureParents(pctx, q.gen, q.item.Project)
-	cancel()
-	if errors.Is(err, errNotFound) && q.attempt == 1 {
+	u.mu.Lock()
+	noParents := u.noParents
+	u.mu.Unlock()
+	var parentUUID string
+	err = nil
+	if !noParents {
+		pctx, cancel := context.WithTimeout(ctx, uploadTimeout)
+		parentUUID, err = u.ensureParents(pctx, q.gen, q.item.Project)
+		cancel()
+	}
+	if errors.Is(err, errNotFound) && !q.rechecked {
 		// a cached parent may be deleted in DT: check the parents again on the retry (once)
 		u.forgetParents(q.gen, q.item.Project)
+		q.rechecked = true
 		err = fmt.Errorf("parent project not found, checked again: %v", err)
 	} else if errors.Is(err, errRejected) {
 		// e.g. a key without PORTFOLIO_MANAGEMENT: send the SBOM without parent rather than not at all
 		log.WithFields(fields).WithError(err).Warn("dtrack: parent project refused, upload without parent")
+		if errors.Is(err, errDenied) {
+			u.mu.Lock()
+			u.noParents = q.gen == u.gen || u.noParents
+			u.mu.Unlock()
+		}
 		parentUUID, err = "", nil
 	}
 
@@ -186,9 +203,10 @@ func (u *Uploader) process(ctx context.Context, q queued) {
 		uctx, cancel := context.WithTimeout(ctx, uploadTimeout)
 		err = u.c.Upload(uctx, q.item.Project, parentUUID, bom)
 		cancel()
-		if errors.Is(err, errNotFound) && parentUUID != "" && q.attempt == 1 {
+		if errors.Is(err, errNotFound) && parentUUID != "" && !q.rechecked {
 			// the cached parent may be deleted in DT: check the parents again on the retry (once)
 			u.forgetParents(q.gen, q.item.Project)
+			q.rechecked = true
 			err = fmt.Errorf("parent project not found, checked again: %v", err)
 		}
 	}
@@ -240,6 +258,8 @@ func (u *Uploader) fixLeaf(ctx context.Context, p Project, parentUUID string) er
 }
 
 // syncProject sends one PATCH with the active flag and the parent, only for what differs.
+// shortcut: an empty parentUUID keeps the parent DT has (a project is never moved back to the root),
+// send "parent": null if a flat template must undo an old tree.
 func (u *Uploader) syncProject(ctx context.Context, cur *dtProject, parentUUID string) error {
 	var active *bool
 	if !cur.Active {
@@ -436,6 +456,20 @@ func (u *Uploader) deactivateParents(ctx context.Context, gen uint64) {
 			log.WithFields(fields).WithError(err).Warn("dtrack: cannot deactivate parent project")
 		} else {
 			log.WithFields(fields).Info("dtrack: parent project deactivated")
+			// a leaf queued during the call may have checked (and cached) the parent as active: undo
+			u.mu.Lock()
+			used = u.parents[c.name] != nil
+			for _, parents := range u.pending {
+				used = used || slices.Contains(parents, c.name)
+			}
+			u.mu.Unlock()
+			if used {
+				sctx, cancel := context.WithTimeout(ctx, uploadTimeout)
+				if err := u.c.SetActive(sctx, c.name, "", true); err != nil {
+					log.WithFields(fields).WithError(err).Warn("dtrack: cannot activate parent project again")
+				}
+				cancel()
+			}
 		}
 	}
 }
