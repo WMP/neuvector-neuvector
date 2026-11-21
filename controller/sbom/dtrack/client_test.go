@@ -182,7 +182,11 @@ func newFakeDT(t *testing.T) *fakeDT {
 			}
 			p := f.addLocked(m.Name, "", m.Active, pu)
 			w.WriteHeader(201)
-			json.NewEncoder(w).Encode(map[string]any{"uuid": p.uuid})
+			resp := map[string]any{"uuid": p.uuid}
+			if pp := f.byUUID(p.parent); pp != nil { // DT answers with the parent it set
+				resp["parent"] = map[string]any{"name": pp.name, "uuid": pp.uuid}
+			}
+			json.NewEncoder(w).Encode(resp)
 		case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/api/v1/project/"):
 			b, _ := io.ReadAll(r.Body)
 			f.patches = append(f.patches, string(b))

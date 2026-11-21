@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -152,7 +153,11 @@ func (u *Uploader) process(ctx context.Context, q queued) {
 	pctx, cancel := context.WithTimeout(ctx, uploadTimeout)
 	parentUUID, err := u.ensureParents(pctx, q.gen, q.item.Project)
 	cancel()
-	if errors.Is(err, errRejected) {
+	if errors.Is(err, errNotFound) && q.attempt == 1 {
+		// a cached parent may be deleted in DT: check the parents again on the retry (once)
+		u.forgetParents(q.gen, q.item.Project)
+		err = fmt.Errorf("parent project not found, checked again: %v", err)
+	} else if errors.Is(err, errRejected) {
 		// e.g. a key without PORTFOLIO_MANAGEMENT: send the SBOM without parent rather than not at all
 		log.WithFields(fields).WithError(err).Warn("dtrack: parent project refused, upload without parent")
 		parentUUID, err = "", nil
@@ -181,8 +186,8 @@ func (u *Uploader) process(ctx context.Context, q queued) {
 		uctx, cancel := context.WithTimeout(ctx, uploadTimeout)
 		err = u.c.Upload(uctx, q.item.Project, parentUUID, bom)
 		cancel()
-		if errors.Is(err, errNotFound) && parentUUID != "" {
-			// the cached parent may be deleted in DT: check the parents again on the retry
+		if errors.Is(err, errNotFound) && parentUUID != "" && q.attempt == 1 {
+			// the cached parent may be deleted in DT: check the parents again on the retry (once)
 			u.forgetParents(q.gen, q.item.Project)
 			err = fmt.Errorf("parent project not found, checked again: %v", err)
 		}
@@ -408,9 +413,20 @@ func (u *Uploader) deactivateParents(ctx context.Context, gen uint64) {
 	for _, c := range list {
 		u.mu.Lock()
 		stale := gen != u.gen
+		used := false
+		for _, parents := range u.pending { // queued since the list was made
+			used = used || slices.Contains(parents, c.name)
+		}
+		if !used {
+			// forget it first: a leaf queued from now on checks the parent in DT (and activates it again)
+			delete(u.parents, c.name)
+		}
 		u.mu.Unlock()
 		if stale || ctx.Err() != nil {
 			return
+		}
+		if used {
+			continue
 		}
 		sctx, cancel := context.WithTimeout(ctx, uploadTimeout)
 		err := u.c.SetActive(sctx, c.name, "", false)
@@ -421,10 +437,5 @@ func (u *Uploader) deactivateParents(ctx context.Context, gen uint64) {
 		} else {
 			log.WithFields(fields).Info("dtrack: parent project deactivated")
 		}
-		u.mu.Lock()
-		if gen == u.gen {
-			delete(u.parents, c.name)
-		}
-		u.mu.Unlock()
 	}
 }

@@ -116,7 +116,7 @@ func dtrackState() (*dtrack.Uploader, share.CLUSDependencyTrack, time.Time, cont
 
 // ErrDtrackPodUnknown: the pod event has not arrived yet (or the pod is deleted). Without it, a pod
 // with an owner would look like a pod without owner and get a project of its own.
-var ErrDtrackPodUnknown = errors.New("pod not known yet")
+var ErrDtrackPodUnknown = errors.New("pod or namespace not known yet")
 
 // ErrDtrackNotRunning: the workload is gone or stopped.
 var ErrDtrackNotRunning = errors.New("workload is not running")
@@ -157,9 +157,12 @@ func dtrackVars(id string) (*dtrack.Vars, *share.CLUSWorkload, error) {
 		return nil, nil, ErrDtrackPodUnknown
 	}
 	v.ReplicaSet, v.PodLabels = p.ownerName, p.labels
-	if d := getDomainData(wl.Domain); d != nil {
-		v.NsLabels = d.Labels
+	// without the namespace data the {rancher.project} level would be skipped: wait for it
+	d := getDomainData(wl.Domain)
+	if d == nil {
+		return nil, nil, ErrDtrackPodUnknown
 	}
+	v.NsLabels = d.Labels
 	return &v, &wl, nil
 }
 

@@ -46,8 +46,14 @@ func newFakeDTrack(t *testing.T) *fakeDTrack {
 			f.uploads = append(f.uploads, dtrackUpload{strings.Join(v["projectName"], ""), strings.Join(v["projectVersion"], ""), strings.Join(v["projectTags"], "")})
 			io.WriteString(w, `{"token":"t"}`)
 		case r.Method == http.MethodPut && r.URL.Path == "/api/v1/project": // parent project
+			var req map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			resp := map[string]any{"uuid": "u-1"}
+			if p, ok := req["parent"]; ok { // DT answers with the parent it set
+				resp["parent"] = p
+			}
 			w.WriteHeader(http.StatusCreated)
-			io.WriteString(w, `{"uuid":"u-1"}`)
+			_ = json.NewEncoder(w).Encode(resp)
 		case r.URL.Path == "/api/v1/project/lookup":
 			if !r.URL.Query().Has("version") { // parents have no version: not found, so they are created
 				w.WriteHeader(404)
@@ -151,6 +157,9 @@ func dtrackAddPod(id, ns, pod, owner string, labels map[string]string) {
 	}}
 	scanMap[id] = &scanInfo{objType: share.ScanObjectType_CONTAINER, lastResult: share.ScanErrorCode_ScanErrNone, lastScanTime: time.Now()}
 	dtrackPodUpdate(&resource.Pod{Name: pod, Domain: ns, OwnerName: owner, Labels: labels}, nil)
+	if domainCacheMap[ns] == nil { // the namespace is known
+		domainCacheMap[ns] = &domainCache{domain: &share.CLUSDomain{Name: ns}}
+	}
 }
 
 func TestDtrackPodsWithoutOwnerGetOwnProjects(t *testing.T) {

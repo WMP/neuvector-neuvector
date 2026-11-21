@@ -239,7 +239,7 @@ func TestDependencyTrackPreview(t *testing.T) {
 	}
 	// the pod is not known yet
 	st, p, raw = dtPreview(`{"workload_id":"wl3"}`, api.UserRoleAdmin, nil)
-	if st != http.StatusOK || p.SkippedReason != "pod not known yet" {
+	if st != http.StatusOK || p.SkippedReason != "pod or namespace not known yet" {
 		t.Errorf("unknown pod: status=%d body=%s", st, raw)
 	}
 

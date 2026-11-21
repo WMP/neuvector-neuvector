@@ -179,9 +179,7 @@ func (c *Client) lookup(ctx context.Context, name, version string) (*dtProject, 
 	return p, nil
 }
 
-// create makes an active project without version and returns its UUID. When DT answers 409
-// (another request created it first) the project is looked up.
-// create returns the new project, or on 409 (created meanwhile) the existing one as it is in DT.
+// create makes an active project without version. It returns the new project, or on 409 (created meanwhile) the existing one as it is in DT.
 func (c *Client) create(ctx context.Context, name, parentUUID string) (*dtProject, error) {
 	m := map[string]any{"name": name, "active": true}
 	if parentUUID != "" {
@@ -202,12 +200,20 @@ func (c *Client) create(ctx context.Context, name, parentUUID string) (*dtProjec
 		return nil, fmt.Errorf("create project: %w", err)
 	case code == http.StatusOK || code == http.StatusCreated:
 		var proj struct {
-			UUID string `json:"uuid"`
+			UUID   string `json:"uuid"`
+			Parent *struct {
+				UUID string `json:"uuid"`
+			} `json:"parent"`
 		}
 		if err := json.Unmarshal(body, &proj); err != nil || proj.UUID == "" {
 			return nil, fmt.Errorf("create project: bad answer")
 		}
-		return &dtProject{UUID: proj.UUID, Active: true, ParentUUID: parentUUID}, nil
+		// DT does not check an unknown parent UUID on create: the answer tells the parent it really set
+		p := &dtProject{UUID: proj.UUID, Active: true}
+		if proj.Parent != nil {
+			p.ParentUUID = proj.Parent.UUID
+		}
+		return p, nil
 	case code == http.StatusConflict:
 		if p, lerr := c.lookup(ctx, name, ""); lerr == nil && p != nil {
 			return p, nil

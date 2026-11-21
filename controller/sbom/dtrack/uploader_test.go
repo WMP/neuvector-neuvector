@@ -471,3 +471,19 @@ func TestDeletedParentCreatedAgain(t *testing.T) {
 		t.Errorf("parent of c/ns/b = %q", got)
 	}
 }
+
+func TestDeletedCachedRootCreatedAgain(t *testing.T) {
+	captureLogs(t)
+	f := newFakeDT(t)
+	u := newTestUploader(t, f)
+	u.Enqueue(deep(chain, "c/ns/a", "d1"))
+	waitFor(t, "first upload", func() bool { n, _ := f.counts(); return n == 1 && u.idle() })
+	f.mu.Lock()
+	delete(f.projects, "c\x00") // the cached root is deleted in DT; a new namespace needs a new child of it
+	f.mu.Unlock()
+	u.Enqueue(deep([]string{"c", "c/ns2"}, "c/ns2/a", "d1"))
+	waitFor(t, "second upload", func() bool { n, _ := f.counts(); return n == 2 && u.idle() })
+	if got := f.parentOf("c/ns2", ""); got != "c" {
+		t.Errorf("parent of c/ns2 = %q", got)
+	}
+}
